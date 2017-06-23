@@ -1,0 +1,11 @@
+{
+    "secretsGroup1":
+    {
+      "secretName1": "secret1Value",
+      "secretName2": "secret2Value"
+    },
+    "secretsGroup2":
+    {
+      "secretName1": "secret1Value"
+    }
+}

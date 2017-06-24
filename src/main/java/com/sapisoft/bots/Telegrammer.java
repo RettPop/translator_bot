@@ -20,7 +20,7 @@ import com.sapisoft.translator.Translator;
 import java.util.*;
 
 /**
- * Created by eviazhe on 2017-05-24.
+ *
  */
 public class Telegrammer extends TelegramLongPollingBot
 {
@@ -33,7 +33,7 @@ public class Telegrammer extends TelegramLongPollingBot
     private String _apiKey;
     private String _botName;
     private final Translator _transl = new AzureTranslator();
-    private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("keys.json");
+    private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
     private Map<Long, List<Long>> _routing = new HashMap<>();
 
     public Telegrammer()

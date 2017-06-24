@@ -1,4 +1,4 @@
-package com.sapisoft;
+package com.sapisoft.secrets;
 
 /**
  * Created by rettpop on 2017-06-21.

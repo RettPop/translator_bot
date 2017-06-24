@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import com.sapisoft.SecretsManager;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.translator.Translation;
@@ -31,8 +30,6 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.xpath.*;
-
-import static com.sapisoft.translator.Translation.FullTranslation;
 
 /**
  * Created by eviazhe on 2017-05-29.
@@ -84,7 +81,7 @@ public class AzureTranslator implements Translator
     {
         if(_subscription == null)
         {
-            ResourcesSecretsManager secretsManager = new ResourcesSecretsManager("keys.json");
+            ResourcesSecretsManager secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
             SimpleSecret simpleSecret = secretsManager.getSecret("subscription", SECRETS_GROUP);
             if(simpleSecret != null)
             {

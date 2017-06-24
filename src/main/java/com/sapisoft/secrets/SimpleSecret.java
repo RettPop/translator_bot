@@ -1,7 +1,5 @@
 package com.sapisoft.secrets;
 
-import com.sapisoft.Secret;
-
 /**
  * Created by rettpop on 2017-06-21.
  */

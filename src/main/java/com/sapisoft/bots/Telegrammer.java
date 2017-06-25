@@ -116,6 +116,10 @@ public class Telegrammer extends TelegramLongPollingBot
                 .setText(update.getMessage().getText());
         try
         {
+            if(message.getText().equals("/help"))
+            {
+                message.setText("Probably useless for you bot as it works with hardcoded channels as for now. But if you are inderested in what does it do anyway, it receives messages from one channel, translates them (with Microsoft Translation API) and sends to another one.");
+            }
             sendMessage(message);
         }
         catch (TelegramApiException e)

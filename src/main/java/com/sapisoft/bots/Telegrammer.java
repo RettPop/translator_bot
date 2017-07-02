@@ -16,6 +16,9 @@ import com.sapisoft.azuretranslator.AzureTranslator;
 
 import java.util.*;
 
+import static com.sapisoft.bots.BotCommand.Commands.HELP;
+import static com.sapisoft.bots.BotCommand.Commands.STATUS;
+
 /**
  *
  */
@@ -56,29 +59,31 @@ public class Telegrammer extends TelegramLongPollingBot
 	@Override
 	public void onUpdateReceived(Update update)
 	{
-
-		if (executeCommand(update))
+		BotCommand command = findCommand(update);
+		if (null != command)
 		{
-			LOG.info("Processing command");
-			return;
+			Message message = update.hasMessage() ? update.getMessage() : update.getChannelPost();
+			executeCommand(command, message);
 		}
-
-		if (update.hasMessage() && update.getMessage().hasText())
+		else
 		{
-			User usr = update.getMessage().getFrom();
-			Chat sourceChat = update.getMessage().getChat();
-			LOG.info("Message arrived from channel: {} from user {}", sourceChat, usr);
+			if (update.hasMessage() && update.getMessage().hasText())
+			{
+				User usr = update.getMessage().getFrom();
+				Chat sourceChat = update.getMessage().getChat();
+				LOG.info("Message arrived from channel: {} from user {}", sourceChat, usr);
 
-			processPrivateMessage(update);
-		}
-		else if (update.hasChannelPost())
-		{
-			Message msg = update.getChannelPost();
-			User usr = msg.getFrom();
-			Chat sourceChat = msg.getChat();
-			LOG.info("Message arrived from channel: {} from user {} ", sourceChat, usr);
+				processPrivateMessage(update);
+			}
+			else if (update.hasChannelPost())
+			{
+				Message msg = update.getChannelPost();
+				User usr = msg.getFrom();
+				Chat sourceChat = msg.getChat();
+				LOG.info("Message arrived from channel: {} from user {} ", sourceChat, usr);
 
-			processChatMessage(update);
+				processChatMessage(update);
+			}
 		}
 	}
 
@@ -129,15 +134,12 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		LOG.info("Private message arrived: {}", update.getMessage().getText());
 
-		SendMessage message = new SendMessage()
-				.setChatId("" + update.getMessage().getChatId())
-				.setText(update.getMessage().getText());
 		try
 		{
-			if (!executeCommand(update))
-			{
-				sendMessage(message);
-			}
+			SendMessage message = new SendMessage()
+					.setChatId("" + update.getMessage().getChatId())
+					.setText(update.getMessage().getText());
+			sendMessage(message);
 		}
 		catch (TelegramApiException e)
 		{
@@ -146,18 +148,18 @@ public class Telegrammer extends TelegramLongPollingBot
 	}
 
 
-	private boolean executeCommand(Update update)
+	private BotCommand findCommand(Update update)
 	{
 		Message updateMessage = update.hasMessage() ? update.getMessage() : update.getChannelPost();
 
 		if(null == updateMessage)
 		{
 			LOG.debug("Received empty update");
-			return false;
+			return null;
 		}
 
 		String commandText = updateMessage.getText();
-		boolean itWasCommand = false;
+		BotCommand botCommand = null;
 
 		if(updateMessage.hasEntities())
 		{
@@ -165,7 +167,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			{
 				if("bot_command".equals(entity.getType()))
 				{
-					itWasCommand = true;
+					botCommand = parseCommand(commandText);
 					LOG.info("Received command {}", entity);
 				}
 				else if("mention".equals(entity.getType()))
@@ -175,12 +177,17 @@ public class Telegrammer extends TelegramLongPollingBot
 							commandText.length());
 					String mentioning = strBeforeMent + strAfterMent;
 					LOG.info("Bot was mentioned with message: \"{}\"", mentioning);
-					itWasCommand = true;
+					botCommand = BotCommand.NOPCommand();
 				}
 			}
 		}
 
-		if (commandText.equals("/help"))
+		return botCommand;
+	}
+
+	private void executeCommand(BotCommand command, Message updateMessage)
+	{
+		if(command.command() == HELP)
 		{
 			SendMessage message = new SendMessage()
 					.setChatId("" + updateMessage.getChatId())
@@ -190,15 +197,44 @@ public class Telegrammer extends TelegramLongPollingBot
 			try
 			{
 				sendMessage(message);
-				itWasCommand = true;
 			}
 			catch (TelegramApiException e)
 			{
 				LOG.debug("Error while sending message: ", e);
 			}
 		}
+		else if (command.command() == STATUS)
+		{
+			SendMessage message = new SendMessage()
+					.setChatId("" + updateMessage.getChatId())
+					.setText(updateMessage.getText());
 
-		return itWasCommand;
+			message.setText("Alive");
+			try
+			{
+				sendMessage(message);
+			}
+			catch (TelegramApiException e)
+			{
+				LOG.debug("Error while sending message: ", e);
+			}
+		}
+	}
+
+	private BotCommand parseCommand(String commandText)
+	{
+		BotCommand command = BotCommand.NOPCommand();
+
+		if(commandText.startsWith("/help"))
+		{
+			command = BotCommand.CreateCommand(HELP);
+		}
+		else if(commandText.startsWith("/status"))
+		{
+			command = BotCommand.CreateCommand(STATUS);
+		}
+
+		return command;
 	}
 
 	@Override

@@ -20,6 +20,8 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -36,6 +38,8 @@ import javax.xml.xpath.*;
  */
 public class AzureTranslator implements Translator
 {
+	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
+
     private static final String SECRETS_GROUP = "com.sapisoft.azuretranslator";
     private String _subscription;
 
@@ -58,16 +62,13 @@ public class AzureTranslator implements Translator
         String translation = message.getSourceText();
         if(token != null)
         {
-            try {
+            try
+            {
                 translation = sendTranslationRequest(message, token);
             }
-            catch (URISyntaxException e)
+            catch (URISyntaxException | IOException e)
             {
-                e.printStackTrace();
-            }
-            catch (IOException e)
-            {
-                e.printStackTrace();
+                LOG.debug("Error translating: ", e);
             }
         }
 
@@ -96,11 +97,11 @@ public class AzureTranslator implements Translator
     {
         URIBuilder builder = new URIBuilder("https://api.microsofttranslator.com/V2/Http.svc/Translate");
         Locale sourceLocale = Locale.forLanguageTag(sourceMessage.getSourceLocale() == null ? "" : sourceMessage.getSourceLocale().getLanguage());
-        Locale targetLocale = Locale.forLanguageTag(sourceMessage.getSourceLocale() == null ? "en" : sourceMessage.getDestinationLocale().getLanguage());
+        Locale destLocale = Locale.forLanguageTag(sourceMessage.getDestinationLocale() == null ? "en" : sourceMessage.getDestinationLocale().getLanguage());
 
         builder.addParameter("text", sourceMessage.getSourceText());
         builder.addParameter("from", sourceLocale.getLanguage());
-        builder.addParameter("to", targetLocale.getLanguage());
+        builder.addParameter("to", destLocale.getLanguage());
         builder.addParameter("contentType", "text/plain");
         builder.addParameter("Accept", "text/plain");
         URI uri = builder.build();
@@ -116,10 +117,9 @@ public class AzureTranslator implements Translator
         {
             String result = EntityUtils.toString(entity);
 
-            DocumentBuilder docBuilder = null;
             try
             {
-                docBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+                DocumentBuilder docBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
                 Document doc = docBuilder.parse(new InputSource(new StringReader(result)));
                 XPath path = XPathFactory.newInstance().newXPath();
                 XPathExpression expr = path.compile("/string");
@@ -127,14 +127,15 @@ public class AzureTranslator implements Translator
                 for (int idx = 0; idx < nodeList.getLength(); idx++)
                 {
                     Node node = nodeList.item(idx);
-                    if(node.getNodeName() == "string")
+                    if("string".equals(node.getNodeName()))
                     {
                         return node.getTextContent();
                     }
                 }
             }
-            catch (XPathExpressionException | SAXException | ParserConfigurationException e) {
-                e.printStackTrace();
+            catch (XPathExpressionException | SAXException | ParserConfigurationException e)
+            {
+            	LOG.debug("Error parsing translation engine answer: ", e);
             }
         }
 

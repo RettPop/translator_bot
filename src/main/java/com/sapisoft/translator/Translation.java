@@ -12,6 +12,12 @@ public class Translation
     private String sourceText;
     private String resultText;
 
+    private Translation()
+    {
+    	// let engine decide by default
+    	sourceLocale = Locale.forLanguageTag("");
+    }
+
     public static Translation SourceTranslation(Locale sourceLocale, Locale destinationLocale, String sourceText)
     {
         Translation sourceTranslation = new Translation();
@@ -21,6 +27,15 @@ public class Translation
 
         return sourceTranslation;
     }
+
+	public static Translation DestinationTranslation(Locale destinationLocale, String sourceText)
+	{
+		Translation sourceTranslation = new Translation();
+		sourceTranslation.destinationLocale = destinationLocale;
+		sourceTranslation.sourceText = sourceText;
+
+		return sourceTranslation;
+	}
 
     public static Translation FullTranslation(Locale sourceLocale, Locale destinationLocale, String sourceText, String resultText)
     {
@@ -47,16 +62,11 @@ public class Translation
     }
 
     public Locale getSourceLocale() {
-        if (sourceText == null) {
-            return Locale.forLanguageTag("");
-        }
         return sourceLocale;
     }
 
-    public Locale getDestinationLocale() {
-        if (destinationLocale == null) {
-            return Locale.forLanguageTag("");
-        }
+    public Locale getDestinationLocale()
+    {
         return destinationLocale;
     }
 

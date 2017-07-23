@@ -1,7 +1,6 @@
 package com.sapisoft.bots;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created by rettpop on 2017-07-02.
@@ -12,19 +11,22 @@ public class BotCommand
 	{
 		HELP,
 		STATUS,
+		TRANSLATE,
+		UNKNOWN,
+		NOTFULL,
 		NOP
 	}
 
 	private Commands command;
-	private List<String> parameters;
+	private Map<String, String> parameters;
 
-	private BotCommand(Commands command, List<String> parameters)
+	private BotCommand(Commands command, Map<String, String> parameters)
 	{
 		this.command = command;
-		this.parameters = parameters != null ? parameters : new ArrayList<>();
+		this.parameters = parameters != null ? new HashMap<>(parameters) : new HashMap<>();
 	}
 
-	public static BotCommand CreateCommand(Commands command, List<String> parameters)
+	public static BotCommand CreateCommand(Commands command, Map<String, String> parameters)
 	{
 		return new BotCommand(command, parameters);
 	}
@@ -44,7 +46,7 @@ public class BotCommand
 		return command;
 	}
 
-	public List<String> parameters()
+	public Map<String, String> parameters()
 	{
 		return parameters;
 	}

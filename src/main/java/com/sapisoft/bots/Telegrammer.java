@@ -1,8 +1,10 @@
 package com.sapisoft.bots;
 
+import com.sapisoft.azuretranslator.AzureTranslator;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
-import com.sapisoft.translator.*;
+import com.sapisoft.translator.Translation;
+import com.sapisoft.translator.Translator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.ApiContextInitializer;
@@ -12,12 +14,11 @@ import org.telegram.telegrambots.api.objects.*;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 
-import com.sapisoft.azuretranslator.AzureTranslator;
-
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import static com.sapisoft.bots.BotCommand.Commands.HELP;
-import static com.sapisoft.bots.BotCommand.Commands.STATUS;
+import static com.sapisoft.bots.BotCommand.Commands.*;
 
 /**
  *
@@ -38,8 +39,9 @@ public class Telegrammer extends TelegramLongPollingBot
 
 	public Telegrammer()
 	{
-		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.DestinationTranslation(Locale.ENGLISH, ""));
+		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.SourceTranslation(Translator.SWEDISH, Locale.ENGLISH, ""));
 		_routing.put(sourceChatId, Arrays.asList(command));
+		LOG.info("Started");
 	}
 
 	public static void main(String[] args)
@@ -87,9 +89,14 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 	}
 
+	private List<TranslationCommand> translationCommandsForChat(Chat chat)
+	{
+		return _routing.get(chat.getId());
+	}
+
 	private void processChatMessage(Update update)
 	{
-		List<TranslationCommand> translationCommands = _routing.get(update.getChannelPost().getChatId());
+		List<TranslationCommand> translationCommands = translationCommandsForChat(update.getChannelPost().getChat());
 
 		Message msg = update.getChannelPost();
 		User usr = update.getChannelPost().getFrom();
@@ -139,7 +146,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			SendMessage message = new SendMessage()
 					.setChatId("" + update.getMessage().getChatId())
 					.setText(update.getMessage().getText());
-			sendMessage(message);
+			execute(message);
 		}
 		catch (TelegramApiException e)
 		{
@@ -187,51 +194,84 @@ public class Telegrammer extends TelegramLongPollingBot
 
 	private void executeCommand(BotCommand command, Message updateMessage)
 	{
-		if(command.command() == HELP)
+		switch (command.command())
 		{
-			SendMessage message = new SendMessage()
-					.setChatId("" + updateMessage.getChatId())
-					.setText(updateMessage.getText());
+			case HELP:
+			{
+				String response = "Probably useless for you bot as it works with hardcoded channels as for now. But if you are inderested in what does it do anyway, it receives messages from one channel, translates them (with Microsoft Locale API) and sends to another one.";
+				sendTextToChat(response, updateMessage.getChatId());
+				break;
+			}
+			case STATUS:
+			{
+				sendTextToChat("Alive", updateMessage.getChatId());
+				break;
+			}
+			case TRANSLATE:
+			{
+				Locale destTranslation = Locale.forLanguageTag(command.parameters().get("from"));
+				String sourceText = command.parameters().get("text");
+				Translation translFrom = Translation.DestinationTranslation(destTranslation, sourceText);
+				Translation translTo = _transl.translate(translFrom);
 
-			message.setText("Probably useless for you bot as it works with hardcoded channels as for now. But if you are inderested in what does it do anyway, it receives messages from one channel, translates them (with Microsoft Locale API) and sends to another one.");
-			try
-			{
-				sendMessage(message);
+				sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
+				break;
 			}
-			catch (TelegramApiException e)
+			case NOTFULL:
 			{
-				LOG.debug("Error while sending message: ", e);
+				sendTextToChat("Command is not properly configured", updateMessage.getChatId());
+				break;
 			}
-		}
-		else if (command.command() == STATUS)
-		{
-			SendMessage message = new SendMessage()
-					.setChatId("" + updateMessage.getChatId())
-					.setText(updateMessage.getText());
-
-			message.setText("Alive");
-			try
+			default:
 			{
-				sendMessage(message);
-			}
-			catch (TelegramApiException e)
-			{
-				LOG.debug("Error while sending message: ", e);
+				sendTextToChat("Unknown command", updateMessage.getChatId());
 			}
 		}
 	}
 
-	private BotCommand parseCommand(String commandText)
+	BotCommand parseCommand(String commandText)
 	{
 		BotCommand command = BotCommand.NOPCommand();
 
-		if(commandText.startsWith("/help"))
+		ArrayList<String> tokens = new ArrayList<>(Arrays.asList(commandText.split("\\s+")));
+		String firstWord = tokens.get(0).toLowerCase();
+		switch (firstWord)
 		{
-			command = BotCommand.CreateCommand(HELP);
-		}
-		else if(commandText.startsWith("/status"))
-		{
-			command = BotCommand.CreateCommand(STATUS);
+			case "/help":
+			{
+				command = BotCommand.CreateCommand(HELP);
+				break;
+			}
+			case "/status":
+			{
+				command = BotCommand.CreateCommand(STATUS);
+				break;
+			}
+			case "/translate":
+			{
+				Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)");
+				Matcher matcher = rxCommand.matcher(commandText);
+
+				String toLang = "en";
+				String text = "";
+				if(matcher.find())
+				{
+					toLang = matcher.group(2);
+					text = matcher.group(3);
+					Map<String, String> params = new HashMap<>();
+					params.put("from", toLang);
+					params.put("text", text);
+					command = BotCommand.CreateCommand(TRANSLATE, params);
+				}
+				else
+				{
+					command = BotCommand.CreateCommand(NOTFULL);
+				}
+
+				break;
+			}
+			default:
+				break;
 		}
 
 		return command;
@@ -275,7 +315,7 @@ public class Telegrammer extends TelegramLongPollingBot
 				.setParseMode("HTML");
 		try
 		{
-			sendMessage(message);
+			execute(message);
 		}
 		catch (TelegramApiException e)
 		{

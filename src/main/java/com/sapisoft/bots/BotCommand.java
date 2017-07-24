@@ -9,12 +9,59 @@ public class BotCommand
 {
 	public enum Commands
 	{
-		HELP,
-		STATUS,
-		TRANSLATE,
-		UNKNOWN,
-		NOTFULL,
-		NOP
+		HELP("help"),
+		STATUS("status"),
+		TRANSLATE("translate"),
+		TRANSLATE_TO("translate"),
+		TRANSLATE_FROM_TO("translate"),
+		UNKNOWN("unknown"),
+		NOTFULL("notfull"),
+		NOP("nop");
+
+		private String _stringName;
+		private Commands(String stringName)
+		{
+			_stringName = stringName;
+		}
+
+		public final String str()
+		{
+			return _stringName;
+		}
+
+		public static Commands fromString(String string)
+		{
+			Commands command = UNKNOWN;
+			switch (string.toLowerCase())
+			{
+				case "help":
+					command = HELP;
+					break;
+				case "status":
+					command = STATUS;
+					break;
+				case "translate":
+					command = TRANSLATE;
+					break;
+				case "translate_to":
+					command = TRANSLATE_TO;
+					break;
+				case "translate_from_to":
+					command = TRANSLATE_FROM_TO;
+					break;
+				case "unknown":
+					command = UNKNOWN;
+					break;
+				case "notfull":
+					command = NOTFULL;
+					break;
+				case "nop":
+					command = NOP;
+					break;
+			}
+
+			return command;
+		}
 	}
 
 	private Commands command;

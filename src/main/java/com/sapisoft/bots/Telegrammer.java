@@ -26,7 +26,7 @@ import static com.sapisoft.bots.BotCommand.Commands.*;
 public class Telegrammer extends TelegramLongPollingBot
 {
 	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
-	private static final String CLASS_VERSION = "1.0.2";
+	private static final String CLASS_VERSION = new Object(){}.getClass().getPackage().getImplementationVersion();
 
 	private static final long sourceChatId = -1001087417333L;
 	private static final long targetChatId = -1001078341977L;
@@ -208,14 +208,23 @@ public class Telegrammer extends TelegramLongPollingBot
 				sendTextToChat("Alive", updateMessage.getChatId());
 				break;
 			}
-			case TRANSLATE:
+			case TRANSLATE_TO:
+			case TRANSLATE_FROM_TO:
 			{
-				Locale destTranslation = Locale.forLanguageTag(command.parameters().get("from"));
+				Locale srcTranslation = command.parameters().get("from") == null ? Locale.forLanguageTag("") : Locale.forLanguageTag(command.parameters().get("from"));
+				Locale destTranslation = Locale.forLanguageTag(command.parameters().get("to"));
 				String sourceText = command.parameters().get("text");
-				Translation translFrom = Translation.DestinationTranslation(destTranslation, sourceText);
+				Translation translFrom = Translation.SourceTranslation(srcTranslation, destTranslation, sourceText);
 				Translation translTo = _transl.translate(translFrom);
 
-				sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
+				if(translTo.getResultText() == null || translTo.getResultText().isEmpty())
+				{
+					sendTextToChat("Error translating text", updateMessage.getChatId());
+				}
+				else
+				{
+					sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
+				}
 				break;
 			}
 			case NOTFULL:
@@ -232,42 +241,62 @@ public class Telegrammer extends TelegramLongPollingBot
 
 	BotCommand parseCommand(String commandText)
 	{
-		BotCommand command = BotCommand.NOPCommand();
-
 		ArrayList<String> tokens = new ArrayList<>(Arrays.asList(commandText.split("\\s+")));
 		String firstWord = tokens.get(0).toLowerCase();
-		switch (firstWord)
+
+		if(!firstWord.startsWith("/"))
 		{
-			case "/help":
+			return BotCommand.NOPCommand();
+		}
+
+		firstWord = firstWord.substring(1, firstWord.length());
+
+		BotCommand command = BotCommand.CreateCommand(UNKNOWN);
+		switch (BotCommand.Commands.fromString(firstWord))
+		{
+			case HELP:
 			{
 				command = BotCommand.CreateCommand(HELP);
 				break;
 			}
-			case "/status":
+			case STATUS:
 			{
 				command = BotCommand.CreateCommand(STATUS);
 				break;
 			}
-			case "/translate":
+			case TRANSLATE:
 			{
-				Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
+				Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
 				Matcher matcher = rxCommand.matcher(commandText);
-
-				String toLang = "en";
-				String text = "";
 				if(matcher.find())
 				{
-					toLang = matcher.group(2);
-					text = matcher.group(3);
+					String fromLang = matcher.group(2);
+					String toLang = matcher.group(3);
+					String text = matcher.group(4);
 					Map<String, String> params = new HashMap<>();
-					params.put("from", toLang);
+					params.put("from", fromLang);
+					params.put("to", toLang);
 					params.put("text", text);
-					command = BotCommand.CreateCommand(TRANSLATE, params);
+					command = BotCommand.CreateCommand(TRANSLATE_FROM_TO, params);
+					break;
 				}
-				else
+
+				rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
+				matcher = rxCommand.matcher(commandText);
+
+				if(matcher.find())
 				{
-					command = BotCommand.CreateCommand(NOTFULL);
+					String toLang = matcher.group(2);
+					String text = matcher.group(3);
+					Map<String, String> params = new HashMap<>();
+					params.put("from", "");
+					params.put("to", toLang);
+					params.put("text", text);
+					command = BotCommand.CreateCommand(TRANSLATE_TO, params);
+					break;
 				}
+
+				command = BotCommand.CreateCommand(NOTFULL);
 
 				break;
 			}

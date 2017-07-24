@@ -26,6 +26,7 @@ import static com.sapisoft.bots.BotCommand.Commands.*;
 public class Telegrammer extends TelegramLongPollingBot
 {
 	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
+	private static final String CLASS_VERSION = "1.0.2";
 
 	private static final long sourceChatId = -1001087417333L;
 	private static final long targetChatId = -1001078341977L;
@@ -41,7 +42,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.SourceTranslation(Translator.SWEDISH, Locale.ENGLISH, ""));
 		_routing.put(sourceChatId, Arrays.asList(command));
-		LOG.info("Started");
+		LOG.info("Starting v.{}", CLASS_VERSION);
 	}
 
 	public static void main(String[] args)
@@ -249,7 +250,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			}
 			case "/translate":
 			{
-				Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)");
+				Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
 				Matcher matcher = rxCommand.matcher(commandText);
 
 				String toLang = "en";

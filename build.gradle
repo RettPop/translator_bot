@@ -8,7 +8,7 @@ sourceCompatibility = 1.8
 task fatJar(type: Jar) {
     manifest {
         attributes 'Implementation-Title': 'ChatTransBot',
-                'Implementation-Version': 1.1,
+                'Implementation-Version': '1.0.2',
                 'Main-Class': 'com.sapisoft.bots.Telegrammer'
     }
     baseName = project.name + '-all'

@@ -41,7 +41,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	public Telegrammer()
 	{
 		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.SourceTranslation(Translator.SWEDISH, Locale.ENGLISH, ""));
-		_routing.put(sourceChatId, Arrays.asList(command));
+		_routing.put(sourceChatId, Collections.singletonList(command));
 		LOG.info("Starting v.{}", CLASS_VERSION);
 	}
 
@@ -227,6 +227,26 @@ public class Telegrammer extends TelegramLongPollingBot
 				}
 				break;
 			}
+			case LANGUAGES:
+				List<Locale> supportedLanguages = _transl.supportedLanguages();
+				if(supportedLanguages == null)
+				{
+					sendTextToChat("Error retreiving supported languages list", updateMessage.getChatId());
+				}
+				else
+				{
+
+					StringBuilder languages = new StringBuilder("List of supported languages:\n");
+					for (Locale oneLocale : supportedLanguages)
+					{
+						languages.append(oneLocale.getLanguage())
+								.append(" - ")
+								.append(oneLocale.getVariant())
+								.append("\n");
+					}
+					sendTextToChat(languages.toString(), updateMessage.getChatId());
+				}
+				break;
 			case NOTFULL:
 			{
 				sendTextToChat("Command is not properly configured", updateMessage.getChatId());
@@ -262,6 +282,11 @@ public class Telegrammer extends TelegramLongPollingBot
 			case STATUS:
 			{
 				command = BotCommand.CreateCommand(STATUS);
+				break;
+			}
+			case LANGUAGES:
+			{
+				command = BotCommand.CreateCommand(LANGUAGES);
 				break;
 			}
 			case TRANSLATE:

@@ -8,24 +8,35 @@ package com.sapisoft.azuretranslator;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-//import static com.sapisoft.azuretranslator.AzureTranslator.SUBSCRIPTION;
-
-public class Authorizator
+class Authorizator
 {
+    private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
 
-    public String GetAuthToken(String subscription)
+    private static final int TOKEN_VALIDITY_PERIOD_MS = 10000;
+
+	private String _authToken;
+	private long lastTokenRequest;
+
+    String GetAuthToken(String subscription)
     {
+        // kinda cache
+        if(System.currentTimeMillis() - lastTokenRequest < TOKEN_VALIDITY_PERIOD_MS && _authToken != null)
+        {
+            return _authToken;
+        }
+
         HttpClient httpClient = HttpClients.createDefault();
 
         try
@@ -40,16 +51,14 @@ public class Authorizator
 
             if(response.getStatusLine().getStatusCode() == HttpStatus.SC_OK)
             {
-                return EntityUtils.toString(entity);
+                lastTokenRequest = System.currentTimeMillis();
+                _authToken = EntityUtils.toString(entity);
+                return _authToken;
             }
         }
-        catch (URISyntaxException e)
+        catch (URISyntaxException | IOException e)
         {
-            e.printStackTrace();
-        } catch (ClientProtocolException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
+            LOG.error("Error requesting authorization token", e);
         }
 
         return null;

@@ -14,12 +14,13 @@ public class BotCommand
 		TRANSLATE("translate"),
 		TRANSLATE_TO("translate"),
 		TRANSLATE_FROM_TO("translate"),
+		LANGUAGES("languages"),
 		UNKNOWN("unknown"),
 		NOTFULL("notfull"),
 		NOP("nop");
 
 		private String _stringName;
-		private Commands(String stringName)
+		Commands(String stringName)
 		{
 			_stringName = stringName;
 		}
@@ -48,6 +49,9 @@ public class BotCommand
 					break;
 				case "translate_from_to":
 					command = TRANSLATE_FROM_TO;
+					break;
+				case "languages":
+					command = LANGUAGES;
 					break;
 				case "unknown":
 					command = UNKNOWN;

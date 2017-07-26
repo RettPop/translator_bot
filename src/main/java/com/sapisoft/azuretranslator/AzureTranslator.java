@@ -1,5 +1,6 @@
 package com.sapisoft.azuretranslator;
 
+import ch.qos.logback.core.util.TimeUtil;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.translator.Translation;
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static javax.ws.rs.core.MediaType.APPLICATION_XML;
 import static javax.ws.rs.core.MediaType.TEXT_XML;
@@ -49,13 +51,21 @@ public class AzureTranslator implements Translator
 	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
 
     private static final String SECRETS_GROUP = "com.sapisoft.azuretranslator";
-    private String _subscription;
+	private static final long SUPPORTED_LANGUAGES_UPDATE_PERIOD_MILLIS = TimeUnit.HOURS.toMillis(24); // 24 hours
+	private String _subscription;
+    private List<Locale> _supportedLaguages;
+    private long _lastSupportedLanguagesFetchTime;
 
     @Override
     public List<Locale> supportedLanguages()
     {
 	    String token = new Authorizator().GetAuthToken(getSubscription());
 	    LOG.debug("Token received: {}", token);
+
+	    if(_supportedLaguages != null && (System.currentTimeMillis() - _lastSupportedLanguagesFetchTime) < SUPPORTED_LANGUAGES_UPDATE_PERIOD_MILLIS)
+	    {
+	    	return _supportedLaguages;
+	    }
 
 		List<Locale> languages = null;
 
@@ -66,7 +76,8 @@ public class AzureTranslator implements Translator
 			    languages = sendLanguagesToTranslateRequest(token);
 			    if(languages != null && !languages.isEmpty())
 			    {
-				    languages = sendLanguagesNamesRequest(token, languages);
+				    _supportedLaguages = sendLanguagesNamesRequest(token, languages);
+				    _lastSupportedLanguagesFetchTime = System.currentTimeMillis();
 			    }
 		    }
 		    catch (URISyntaxException | IOException e)

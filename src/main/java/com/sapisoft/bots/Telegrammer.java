@@ -1,6 +1,7 @@
 package com.sapisoft.bots;
 
 import com.sapisoft.azuretranslator.AzureTranslator;
+import com.sapisoft.config.FileConfigManager;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.translator.Translation;
@@ -28,18 +29,19 @@ public class Telegrammer extends TelegramLongPollingBot
 	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
 	private static final String CLASS_VERSION = new Object(){}.getClass().getPackage().getImplementationVersion();
 
-	private static final long sourceChatId = -1001087417333L;
-	private static final long targetChatId = -1001078341977L;
 	private static final String SECRETS_GROUP = "com.sapisoft.bots.Translator";
 
 	private String _apiKey;
 	private String _botName;
 	private final Translator _transl = new AzureTranslator();
+	private final FileConfigManager _confManager = new FileConfigManager("/config/config.json");
 	private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
 	private Map<Long, List<TranslationCommand>> _routing = new HashMap<>();
 
 	public Telegrammer()
 	{
+		Long sourceChatId = _confManager.getLongValue("sourceChat", "defaultRouting");
+		Long targetChatId = _confManager.getLongValue("destinationChat", "defaultRouting");
 		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.SourceTranslation(Translator.SWEDISH, Locale.ENGLISH, ""));
 		_routing.put(sourceChatId, Collections.singletonList(command));
 		LOG.info("Starting v.{}", CLASS_VERSION);
@@ -62,6 +64,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	@Override
 	public void onUpdateReceived(Update update)
 	{
+		LOG.debug("Update arrived: {}", update);
 		BotCommand command = findCommand(update);
 		if (null != command)
 		{
@@ -211,6 +214,17 @@ public class Telegrammer extends TelegramLongPollingBot
 			case TRANSLATE_TO:
 			case TRANSLATE_FROM_TO:
 			{
+				List<String> permittedChats = _confManager.getValuesArray("translation", "permissions");
+				if(updateMessage.getFrom() != null)
+				{
+					Integer userId = updateMessage.getFrom().getId();
+					if(!permittedChats.contains(Integer.toString(userId)))
+					{
+						sendTextToChat("You are not allowed to perform translation.", updateMessage.getChatId());
+						return;
+					}
+				}
+
 				Locale srcTranslation = command.parameters().get("from") == null ? Locale.forLanguageTag("") : Locale.forLanguageTag(command.parameters().get("from"));
 				Locale destTranslation = Locale.forLanguageTag(command.parameters().get("to"));
 				String sourceText = command.parameters().get("text");
@@ -371,6 +385,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		try
 		{
 			execute(message);
+			LOG.debug("Sending message: {}", message);
 		}
 		catch (TelegramApiException e)
 		{

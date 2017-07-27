@@ -1,0 +1,11 @@
+{
+    "configSection1":
+    {
+      "optionName1": "option1Value",
+      "optionName2": "option2Value"
+    },
+    "configSection2":
+    {
+      "optionName1": "option1Value"
+    }
+}

@@ -313,7 +313,9 @@ public class AzureTranslator implements Translator
         AzureTranslator translator = new AzureTranslator();
 //        Translation text = translator.translate(Translation.SimpleTranslation("15:e juni, 2017 Bolotto med snabb inflytt Nytt koncept för dig om vill flytta in snabbt."));
 	    List<Locale> languages = translator.supportedLanguages();
+	    System.out.println(languages.toString());
 
-	    System.out.printf(languages.toString());
+	    languages = translator.supportedLanguages();
+	    System.out.println(languages.toString());
     }
 }

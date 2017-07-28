@@ -1,6 +1,5 @@
 package com.sapisoft.azuretranslator;
 
-import ch.qos.logback.core.util.TimeUtil;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.translator.Translation;
@@ -60,7 +59,7 @@ public class AzureTranslator implements Translator
     public List<Locale> supportedLanguages()
     {
 	    String token = new Authorizator().GetAuthToken(getSubscription());
-	    LOG.debug("Token received: {}", token);
+	    LOG.debug("Token received: {}*", token.substring(1, 5));
 
 	    if(_supportedLaguages != null && (System.currentTimeMillis() - _lastSupportedLanguagesFetchTime) < SUPPORTED_LANGUAGES_UPDATE_PERIOD_MILLIS)
 	    {

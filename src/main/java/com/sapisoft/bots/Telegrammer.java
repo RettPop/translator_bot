@@ -4,6 +4,8 @@ import com.sapisoft.azuretranslator.AzureTranslator;
 import com.sapisoft.config.FileConfigManager;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
+import com.sapisoft.stats.Counter;
+import com.sapisoft.stats.FileCountersManager;
 import com.sapisoft.translator.Translation;
 import com.sapisoft.translator.Translator;
 import org.slf4j.Logger;
@@ -37,6 +39,10 @@ public class Telegrammer extends TelegramLongPollingBot
 	private final FileConfigManager _confManager = new FileConfigManager("/config/config.json");
 	private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
 	private Map<Long, List<TranslationCommand>> _routing = new HashMap<>();
+	private final FileCountersManager _countsManager;
+	private Counter _counterTranslates = Counter.fromString("translations.Number");
+	private Counter _counterChars = Counter.fromString("translations.Characters");
+	private Counter _counterTranslErrors = Counter.fromString("translations.Error");
 
 	public Telegrammer()
 	{
@@ -44,6 +50,10 @@ public class Telegrammer extends TelegramLongPollingBot
 		Long targetChatId = _confManager.getLongValue("destinationChat", "defaultRouting");
 		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.SourceTranslation(Translator.SWEDISH, Locale.ENGLISH, ""));
 		_routing.put(sourceChatId, Collections.singletonList(command));
+
+		String countersFile = _confManager.getOption("countersFile", "statistics");
+		_countsManager = new FileCountersManager(countersFile);
+
 		LOG.info("Starting v.{}", CLASS_VERSION);
 	}
 
@@ -127,6 +137,9 @@ public class Telegrammer extends TelegramLongPollingBot
 
 			if (!translatedMsg.getResultText().isEmpty())
 			{
+				_countsManager.changeCounterValue(_counterTranslates, 1);
+				_countsManager.changeCounterValue(_counterChars, msg.getText().length());
+
 				String report = translatedMsg.getResultText()
 						+ "\n<i>(" + translatedMsg.getSourceLocale().getLanguage() + "->" + translatedMsg.getDestinationLocale().getLanguage()
 						+ " from \"" + update.getChannelPost().getChat().getTitle() + "\")</i>";
@@ -136,6 +149,8 @@ public class Telegrammer extends TelegramLongPollingBot
 			}
 			else
 			{
+				_countsManager.changeCounterValue(_counterTranslErrors, 1);
+				_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + sourceChat.getId()), 1);
 				LOG.info("Empty message translation arrived");
 			}
 		}
@@ -233,11 +248,14 @@ public class Telegrammer extends TelegramLongPollingBot
 
 				if(translTo.getResultText() == null || translTo.getResultText().isEmpty())
 				{
+					_countsManager.changeCounterValue(_counterTranslErrors, 1);
 					sendTextToChat("Error translating text", updateMessage.getChatId());
 				}
 				else
 				{
 					sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
+					_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
+					_countsManager.changeCounterValue(_counterChars, translFrom.getSourceText().length());
 				}
 				break;
 			}

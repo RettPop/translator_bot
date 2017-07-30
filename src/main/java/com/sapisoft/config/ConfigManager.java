@@ -1,10 +1,18 @@
 package com.sapisoft.config;
 
-public interface ConfigManager<T>
-{
-	T getOption(String optionName, String configSection);
+import java.util.List;
 
-	default void setOption(String optionName, String configSection, T optionValue)
+public interface ConfigManager
+{
+	String getOption(String optionName, String configSection);
+	List<String> getValuesArray(String optionName, String configSection);
+
+	default void setOption(String optionName, String configSection, String optionValue)
+	{
+		return;
+	}
+
+	default void setOption(String optionName, String configSection, List<String> valuesArray)
 	{
 		return;
 	}

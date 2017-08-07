@@ -139,6 +139,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			{
 				_countsManager.changeCounterValue(_counterTranslates, 1);
 				_countsManager.changeCounterValue(_counterChars, msg.getText().length());
+				_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + sourceChat.getId()), 1);
 
 				String report = translatedMsg.getResultText()
 						+ "\n<i>(" + translatedMsg.getSourceLocale().getLanguage() + "->" + translatedMsg.getDestinationLocale().getLanguage()
@@ -150,7 +151,6 @@ public class Telegrammer extends TelegramLongPollingBot
 			else
 			{
 				_countsManager.changeCounterValue(_counterTranslErrors, 1);
-				_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + sourceChat.getId()), 1);
 				LOG.info("Empty message translation arrived");
 			}
 		}
@@ -226,6 +226,22 @@ public class Telegrammer extends TelegramLongPollingBot
 				sendTextToChat("Alive", updateMessage.getChatId());
 				break;
 			}
+			case COUNTERS:
+			{
+				List<String> permittedChats = _confManager.getValuesArray("counters.show", "permissions");
+				if(updateMessage.getFrom() != null)
+				{
+					Integer userId = updateMessage.getFrom().getId();
+					if(!permittedChats.contains(Integer.toString(userId)))
+					{
+						sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
+						return;
+					}
+				}
+
+				sendTextToChat(_countsManager.toString(), updateMessage.getChatId());
+				break;
+			}
 			case TRANSLATE_TO:
 			case TRANSLATE_FROM_TO:
 			{
@@ -256,6 +272,7 @@ public class Telegrammer extends TelegramLongPollingBot
 					sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
 					_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
 					_countsManager.changeCounterValue(_counterChars, translFrom.getSourceText().length());
+					_countsManager.changeCounterValue(_counterTranslates, 1);
 				}
 				break;
 			}
@@ -319,6 +336,11 @@ public class Telegrammer extends TelegramLongPollingBot
 			case LANGUAGES:
 			{
 				command = BotCommand.CreateCommand(LANGUAGES);
+				break;
+			}
+			case COUNTERS:
+			{
+				command = BotCommand.CreateCommand(COUNTERS);
 				break;
 			}
 			case TRANSLATE:

@@ -3,11 +3,13 @@ package com.sapisoft.stats;
 import com.google.gson.*;
 import com.sapisoft.config.ConfigManager;
 import com.sapisoft.config.FileConfigManager;
+import org.fest.assertions.data.MapEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 import java.util.Set;
@@ -86,6 +88,24 @@ public class FileCountersManager implements CountersManager
 		}
 
 		return counter.getCounterValue();
+	}
+
+	@Override
+	public String toString()
+	{
+		StringBuilder str = new StringBuilder("Counters:\n");
+		for (Map.Entry<String, Counter> oneEntry: _counters.entrySet())
+		{
+			Counter oneCounter = oneEntry.getValue();
+			str.append("name: ").append(oneCounter.name()).append("\n");
+			str.append("value: ").append(oneCounter.getCounterValue()).append("\n");
+			str.append("old value: ").append(oneCounter.getOldValue()).append("\n");
+			str.append("updated: ").append(oneCounter.getUpdated()).append("\n");
+			str.append("created: ").append(oneCounter.getCreated()).append("\n");
+			str.append("\n");
+		}
+
+		return str.toString();
 	}
 
 	//TODO: rewrite it in more modern way

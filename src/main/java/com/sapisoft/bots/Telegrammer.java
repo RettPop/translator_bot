@@ -41,7 +41,8 @@ public class Telegrammer extends TelegramLongPollingBot
 	private Map<Long, List<TranslationCommand>> _routing = new HashMap<>();
 	private final FileCountersManager _countsManager;
 	private Counter _counterTranslates = Counter.fromString("translations.Number");
-	private Counter _counterChars = Counter.fromString("translations.Characters");
+	private Counter _counterTotalChars = Counter.fromString("translations.Characters");
+	private Counter _counterMsgLength = Counter.fromString("translations.MessageLength");
 	private Counter _counterTranslErrors = Counter.fromString("translations.Error");
 
 	public Telegrammer()
@@ -52,7 +53,8 @@ public class Telegrammer extends TelegramLongPollingBot
 		_routing.put(sourceChatId, Collections.singletonList(command));
 
 		String countersFile = _confManager.getOption("countersFile", "statistics");
-		_countsManager = new FileCountersManager(countersFile);
+		String countersDir = _confManager.getOption("countersDir", "statistics");
+		_countsManager = new FileCountersManager(countersFile, countersDir);
 
 		LOG.info("Starting v.{}", CLASS_VERSION);
 	}
@@ -138,7 +140,8 @@ public class Telegrammer extends TelegramLongPollingBot
 			if (!translatedMsg.getResultText().isEmpty())
 			{
 				_countsManager.changeCounterValue(_counterTranslates, 1);
-				_countsManager.changeCounterValue(_counterChars, msg.getText().length());
+				_countsManager.changeCounterValue(_counterTotalChars, msg.getText().length());
+				_countsManager.setCounterValue(_counterMsgLength, msg.getText().length());
 				_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + sourceChat.getId()), 1);
 
 				String report = translatedMsg.getResultText()
@@ -271,7 +274,8 @@ public class Telegrammer extends TelegramLongPollingBot
 				{
 					sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
 					_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
-					_countsManager.changeCounterValue(_counterChars, translFrom.getSourceText().length());
+					_countsManager.changeCounterValue(_counterTotalChars, translFrom.getSourceText().length());
+					_countsManager.setCounterValue(_counterMsgLength, translFrom.getSourceText().length());
 					_countsManager.changeCounterValue(_counterTranslates, 1);
 				}
 				break;

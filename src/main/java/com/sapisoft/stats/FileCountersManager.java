@@ -1,15 +1,14 @@
 package com.sapisoft.stats;
 
 import com.google.gson.*;
-import com.sapisoft.config.ConfigManager;
-import com.sapisoft.config.FileConfigManager;
-import org.fest.assertions.data.MapEntry;
+import org.apache.commons.lang3.StringEscapeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.time.Instant;
-import java.util.Collections;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Date;
 import java.util.Map;
 import java.util.Set;
@@ -24,14 +23,19 @@ public class FileCountersManager implements CountersManager
 	public static final String PROPERTY_CREATED = "created";
 	public static final String PROPERTY_NAME = "name";
 	public static final String SECTION_COUNTERS = "counters";
+	public static final String CSV_SEPARATOR = ";";
+	public static final String COUNTER_FILE_PREFIX = "counter_";
 	private final String _fileName;
+	private final String _countersDir;
 
 	private Map<String, Counter> _counters = new ConcurrentHashMap<>();
 
 
-	public FileCountersManager(String countersFile)
+	public FileCountersManager(String countersFile, String countersDir)
 	{
 		_fileName = countersFile;
+		_countersDir = countersDir;
+
 		_counters = readCounters(_fileName);
 	}
 
@@ -60,7 +64,31 @@ public class FileCountersManager implements CountersManager
 		_counters.put(counter.name(), newCounter);
 
 		writeCounters(_fileName);
+		writeCounter(newCounter);
 		return newValue;
+	}
+
+	private void writeCounter(Counter counter)
+	{
+		synchronized (counter)
+		{
+			String counterFileName = Paths.get(_countersDir, COUNTER_FILE_PREFIX + counter.name().hashCode()).toAbsolutePath().toString();
+
+			try (Writer writer = new FileWriter(counterFileName , true))
+			{
+				StringBuilder str = new StringBuilder(StringEscapeUtils.escapeCsv(counter.name()));
+				str.append(CSV_SEPARATOR).append(counter.getOldValue());
+				str.append(CSV_SEPARATOR).append(counter.getCounterValue());
+				str.append(CSV_SEPARATOR).append(counter.getCreated().getTime());
+				str.append(CSV_SEPARATOR).append(counter.getUpdated().getTime());
+				str.append("\n");
+				writer.append(str.toString());
+			}
+			catch (IOException e)
+			{
+				LOG.error("Error write counter {} file {}: ", counter.name(), counterFileName, e);
+			}
+		}
 	}
 
 	@Override
@@ -98,6 +126,7 @@ public class FileCountersManager implements CountersManager
 		{
 			Counter oneCounter = oneEntry.getValue();
 			str.append("name: ").append(oneCounter.name()).append("\n");
+			str.append("file: ").append(COUNTER_FILE_PREFIX + oneCounter.name().hashCode()).append("\n");
 			str.append("value: ").append(oneCounter.getCounterValue()).append("\n");
 			str.append("old value: ").append(oneCounter.getOldValue()).append("\n");
 			str.append("updated: ").append(oneCounter.getUpdated()).append("\n");
@@ -127,21 +156,11 @@ public class FileCountersManager implements CountersManager
 
 			for (Map.Entry<String, JsonElement> oneElement : counters)
 			{
-				JsonObject counterObject = oneElement.getValue().getAsJsonObject();
 				String counterName = oneElement.getKey();
 
 				try
 				{
-					Date created = new Date(counterObject.get(PROPERTY_CREATED).getAsLong());
-					Date updated = new Date(counterObject.get(PROPERTY_UPDATED).getAsLong());
-					Counter newCounter = Counter.builder()
-							.setCounterName(counterName)
-							.setCounterValue(counterObject.get(PROPERTY_VALUE).getAsFloat())
-							.setOldValue(counterObject.get(PROPERTY_OLD_VALUE).getAsFloat())
-							.setCreated(created)
-							.setUpdated(updated)
-							.build();
-
+					Counter newCounter = readCounter(counterName);
 					countersMap.put(counterName, newCounter);
 				}
 				catch (Exception e)
@@ -156,6 +175,45 @@ public class FileCountersManager implements CountersManager
 		}
 
 		return  countersMap;
+	}
+
+	private Counter readCounter(String counterName)
+	{
+		String counterFileName = Paths.get(_countersDir, COUNTER_FILE_PREFIX + counterName.hashCode()).toAbsolutePath().toString();
+		try (BufferedReader reader = Files.newBufferedReader(Paths.get(counterFileName),StandardCharsets.UTF_8))
+		{
+			// reading CSV file line by line until last record
+			String lastLine = "";
+			String currentLine = reader.readLine();
+			while (currentLine != null)
+			{
+				lastLine = currentLine;
+				currentLine = reader.readLine();
+			}
+
+			String[] columns = lastLine.split(CSV_SEPARATOR);
+			if(columns.length < 5)
+			{
+				return null;
+			}
+
+			Date created = new Date(Long.parseLong(columns[3]));
+			Date updated = new Date(Long.parseLong(columns[4]));
+			Counter counter = Counter.builder()
+					.setCounterName(counterName)
+					.setOldValue(Float.parseFloat(columns[1]))
+					.setCounterValue(Float.parseFloat(columns[2]))
+					.setCreated(created)
+					.setUpdated(updated)
+					.build();
+			return counter;
+		}
+		catch (IOException e)
+		{
+			LOG.error("Error read counter {} file {}: ", counterName, counterFileName, e);
+		}
+
+		return null;
 	}
 
 	//TODO: rewrite it in more modern way

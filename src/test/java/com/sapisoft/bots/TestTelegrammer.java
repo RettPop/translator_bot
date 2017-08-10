@@ -2,8 +2,12 @@ package com.sapisoft.bots;
 
 import org.junit.Test;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Date;
+
 import static com.sapisoft.bots.BotCommand.Commands.*;
-import static org.junit.Assert.*;
+import static org.fest.assertions.api.Assertions.assertThat;
 
 public class TestTelegrammer
 {
@@ -32,7 +36,21 @@ public class TestTelegrammer
 	{
 		Telegrammer telegrammer = new Telegrammer();
 		BotCommand command = telegrammer.parseCommand("/translate text");
-		assertTrue(command.command() == NOTFULL);
+		assertThat(command.command())
+				.isEqualTo(NOTFULL);
+	}
+
+	@Test
+	public void testShouldReturnCounterDeltaCommand() throws Exception
+	{
+		Telegrammer telegrammer = new Telegrammer();
+		BotCommand command = telegrammer.parseCommand("/counterdelta counterName month  ");
+		assertThat(command.command())
+				.isEqualTo(COUNTERDELTA);
+		assertThat(command.parameters().get("counter"))
+				.isEqualTo("counterName");
+		assertThat(command.parameters().get("period"))
+				.isEqualTo("month");
 	}
 
 	@Test

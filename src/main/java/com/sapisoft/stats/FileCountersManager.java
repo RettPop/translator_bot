@@ -9,10 +9,9 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Date;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class FileCountersManager implements CountersManager
 {
@@ -25,6 +24,7 @@ public class FileCountersManager implements CountersManager
 	public static final String SECTION_COUNTERS = "counters";
 	public static final String CSV_SEPARATOR = ";";
 	public static final String COUNTER_FILE_PREFIX = "counter_";
+	public static final int COLUMN_VALUE = 2;
 	private final String _fileName;
 	private final String _countersDir;
 
@@ -51,14 +51,18 @@ public class FileCountersManager implements CountersManager
 					.setCounterValue(newValue)
 					.setCreated(new Date())
 					.setUpdated(new Date())
+					.setMaxValue(newValue)
 					.build();
 		}
 		else
 		{
+			Float maxValue = newCounter.getCounterValue() > newValue ? newCounter.getCounterValue() : newValue;
+
 			newCounter = Counter.builder(newCounter)
 					.setOldValue(newCounter.getCounterValue())
 					.setCounterValue(newValue)
 					.setUpdated(new Date())
+					.setMaxValue(maxValue)
 					.build();
 		}
 		_counters.put(counter.name(), newCounter);
@@ -119,22 +123,46 @@ public class FileCountersManager implements CountersManager
 	}
 
 	@Override
-	public String toString()
+	public Counter getCounter(Counter existingCounter)
 	{
-		StringBuilder str = new StringBuilder("Counters:\n");
+		Counter counter = _counters.get(existingCounter.name());
+		return counter;
+	}
+
+	@Override
+	public List<Counter> getCounterStatesForPeriod(Counter counter, Date startDate, Date lastDate)
+	{
+		ArrayList<Counter> states = new ArrayList<>();
+		readCounterFromCSV(counter.name(), state -> {
+			if(state.getUpdated().compareTo(startDate) >= 0 && state.getUpdated().compareTo(lastDate) <= 0)
+			{
+				states.add(state);
+			}
+		});
+
+		return states;
+	}
+
+	public List<String> textual()
+	{
+		List<String> counters = new ArrayList<>();
+
 		for (Map.Entry<String, Counter> oneEntry: _counters.entrySet())
 		{
+			StringBuilder str = new StringBuilder("Counters:\n");
 			Counter oneCounter = oneEntry.getValue();
 			str.append("name: ").append(oneCounter.name()).append("\n");
 			str.append("file: ").append(COUNTER_FILE_PREFIX + oneCounter.name().hashCode()).append("\n");
 			str.append("value: ").append(oneCounter.getCounterValue()).append("\n");
 			str.append("old value: ").append(oneCounter.getOldValue()).append("\n");
+			str.append("max value: ").append(oneCounter.getMaxValue()).append("\n");
 			str.append("updated: ").append(oneCounter.getUpdated()).append("\n");
 			str.append("created: ").append(oneCounter.getCreated()).append("\n");
-			str.append("\n");
+
+			counters.add(str.toString());
 		}
 
-		return str.toString();
+		return counters;
 	}
 
 	//TODO: rewrite it in more modern way
@@ -144,6 +172,7 @@ public class FileCountersManager implements CountersManager
 
 		try
 		{
+			// read counters list
 			JsonParser parser = new JsonParser();
 			JsonObject obj;
 			synchronized (_counters)
@@ -151,16 +180,25 @@ public class FileCountersManager implements CountersManager
 				FileReader in = new FileReader(fileName);
 				obj = parser.parse(new BufferedReader(in)).getAsJsonObject();
 			}
+
 			JsonObject countersBlock = obj.getAsJsonObject(SECTION_COUNTERS);
 			Set<Map.Entry<String, JsonElement>> counters = countersBlock.entrySet();
 
+			// read counters from corresponding CSV files
 			for (Map.Entry<String, JsonElement> oneElement : counters)
 			{
 				String counterName = oneElement.getKey();
-
 				try
 				{
-					Counter newCounter = readCounter(counterName);
+					AtomicReference<Float> maxValue = new AtomicReference<>(Float.MIN_VALUE);
+					Counter newCounter = readCounterFromCSV(counterName,
+							c -> maxValue.set(c.getCounterValue() > maxValue.get() ? c.getCounterValue() : maxValue.get()));
+
+					// need to set counter's maxValue
+					newCounter = Counter.builder(newCounter)
+							.setMaxValue(maxValue.get())
+							.build();
+
 					countersMap.put(counterName, newCounter);
 				}
 				catch (Exception e)
@@ -177,36 +215,37 @@ public class FileCountersManager implements CountersManager
 		return  countersMap;
 	}
 
-	private Counter readCounter(String counterName)
+	interface CounterStateProcess
+	{
+		void processCounterState(Counter counter);
+	}
+
+	private Counter readCounterFromCSV(String counterName, CounterStateProcess stateCallback)
 	{
 		String counterFileName = Paths.get(_countersDir, COUNTER_FILE_PREFIX + counterName.hashCode()).toAbsolutePath().toString();
 		try (BufferedReader reader = Files.newBufferedReader(Paths.get(counterFileName),StandardCharsets.UTF_8))
 		{
 			// reading CSV file line by line until last record
-			String lastLine = "";
 			String currentLine = reader.readLine();
+			Counter counterState = null;
+			String lastLine = null;
 			while (currentLine != null)
 			{
 				lastLine = currentLine;
 				currentLine = reader.readLine();
+				// parse counter state either if we have callback or it was last line in the file
+				if(null != stateCallback || currentLine == null)
+				{
+					String[] columns = lastLine.split(CSV_SEPARATOR);
+					counterState = getCounterFromColums(counterName, columns);
+					if(null != stateCallback)
+					{
+						stateCallback.processCounterState(counterState);
+					}
+				}
 			}
 
-			String[] columns = lastLine.split(CSV_SEPARATOR);
-			if(columns.length < 5)
-			{
-				return null;
-			}
-
-			Date created = new Date(Long.parseLong(columns[3]));
-			Date updated = new Date(Long.parseLong(columns[4]));
-			Counter counter = Counter.builder()
-					.setCounterName(counterName)
-					.setOldValue(Float.parseFloat(columns[1]))
-					.setCounterValue(Float.parseFloat(columns[2]))
-					.setCreated(created)
-					.setUpdated(updated)
-					.build();
-			return counter;
+			return counterState;
 		}
 		catch (IOException e)
 		{
@@ -214,6 +253,34 @@ public class FileCountersManager implements CountersManager
 		}
 
 		return null;
+	}
+
+	private Counter getCounterFromColums(String counterName, String[] columns)
+	{
+		if(columns.length < 5)
+		{
+			return null;
+		}
+
+		Counter counter = null;
+		try
+		{
+			Date created = new Date(Long.parseLong(columns[3]));
+			Date updated = new Date(Long.parseLong(columns[4]));
+			counter = Counter.builder()
+					.setCounterName(counterName)
+					.setOldValue(Float.parseFloat(columns[1]))
+					.setCounterValue(Float.parseFloat(columns[COLUMN_VALUE]))
+					.setCreated(created)
+					.setUpdated(updated)
+					.build();
+		}
+		catch (Exception e)
+		{
+			LOG.debug("Error getting value while reading counter from CSV");
+		}
+
+		return counter;
 	}
 
 	//TODO: rewrite it in more modern way

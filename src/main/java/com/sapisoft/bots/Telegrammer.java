@@ -17,6 +17,9 @@ import org.telegram.telegrambots.api.objects.*;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -231,74 +234,22 @@ public class Telegrammer extends TelegramLongPollingBot
 			}
 			case COUNTERS:
 			{
-				List<String> permittedChats = _confManager.getValuesArray("counters.show", "permissions");
-				if(updateMessage.getFrom() != null)
-				{
-					Integer userId = updateMessage.getFrom().getId();
-					if(!permittedChats.contains(Integer.toString(userId)))
-					{
-						sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
-						return;
-					}
-				}
-
-				sendTextToChat(_countsManager.toString(), updateMessage.getChatId());
+				executeCommandCounters(updateMessage);
+				break;
+			}
+			case COUNTERDELTA:
+			{
+				executeCommandCounterdelta(command, updateMessage);
 				break;
 			}
 			case TRANSLATE_TO:
 			case TRANSLATE_FROM_TO:
 			{
-				List<String> permittedChats = _confManager.getValuesArray("translation", "permissions");
-				if(updateMessage.getFrom() != null)
-				{
-					Integer userId = updateMessage.getFrom().getId();
-					if(!permittedChats.contains(Integer.toString(userId)))
-					{
-						sendTextToChat("You are not allowed to perform translation.", updateMessage.getChatId());
-						return;
-					}
-				}
-
-				Locale srcTranslation = command.parameters().get("from") == null ? Locale.forLanguageTag("") : Locale.forLanguageTag(command.parameters().get("from"));
-				Locale destTranslation = Locale.forLanguageTag(command.parameters().get("to"));
-				String sourceText = command.parameters().get("text");
-				Translation translFrom = Translation.SourceTranslation(srcTranslation, destTranslation, sourceText);
-				Translation translTo = _transl.translate(translFrom);
-
-				if(translTo.getResultText() == null || translTo.getResultText().isEmpty())
-				{
-					_countsManager.changeCounterValue(_counterTranslErrors, 1);
-					sendTextToChat("Error translating text", updateMessage.getChatId());
-				}
-				else
-				{
-					sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
-					_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
-					_countsManager.changeCounterValue(_counterTotalChars, translFrom.getSourceText().length());
-					_countsManager.setCounterValue(_counterMsgLength, translFrom.getSourceText().length());
-					_countsManager.changeCounterValue(_counterTranslates, 1);
-				}
+				executeCommandTranslate(command, updateMessage);
 				break;
 			}
 			case LANGUAGES:
-				List<Locale> supportedLanguages = _transl.supportedLanguages();
-				if(supportedLanguages == null)
-				{
-					sendTextToChat("Error retreiving supported languages list", updateMessage.getChatId());
-				}
-				else
-				{
-
-					StringBuilder languages = new StringBuilder("List of supported languages:\n");
-					for (Locale oneLocale : supportedLanguages)
-					{
-						languages.append(oneLocale.getLanguage())
-								.append(" - ")
-								.append(oneLocale.getVariant())
-								.append("\n");
-					}
-					sendTextToChat(languages.toString(), updateMessage.getChatId());
-				}
+				executeCommandLanguages(updateMessage);
 				break;
 			case NOTFULL:
 			{
@@ -309,6 +260,125 @@ public class Telegrammer extends TelegramLongPollingBot
 			{
 				sendTextToChat("Unknown command", updateMessage.getChatId());
 			}
+		}
+	}
+
+	private void executeCommandCounterdelta(BotCommand command, Message updateMessage)
+	{
+		List<String> permittedChats = _confManager.getValuesArray("counters.show", "permissions");
+		if(updateMessage.getFrom() != null)
+		{
+			Integer userId = updateMessage.getFrom().getId();
+			if(!permittedChats.contains(Integer.toString(userId)))
+			{
+				sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
+				return;
+			}
+		}
+
+		Counter counter = Counter.fromString(command.parameters().get("counter"));
+		counter = _countsManager.getCounter(counter);
+
+		if(null == counter)
+		{
+			sendTextToChat("Unknown counter", updateMessage.getChatId());
+			return;
+		}
+
+		String periodName = command.parameters().get("period");
+		Date lastDate = new Date();
+		Date startDate = null;
+		if("month".equals(periodName))
+		{
+			startDate = Date.from(LocalDate.now()
+					.atStartOfDay()
+					.withDayOfMonth(1)
+					.atZone(ZoneId.systemDefault())
+					.toInstant());
+		}
+
+		List<Counter> counterStates = _countsManager.getCounterStatesForPeriod(counter, startDate, lastDate);
+		if(counterStates.size() < 2)
+		{
+			sendTextToChat("Not enough values to calculate delta", updateMessage.getChatId());
+			return;
+		}
+
+		float delta = counterStates.get(counterStates.size() - 1).getCounterValue() - counterStates.get(0).getCounterValue();
+		sendTextToChat("Counter " + counter.name() + " delta since beginning of month is: " + delta, updateMessage.getChatId());
+	}
+
+	private void executeCommandLanguages(Message updateMessage)
+	{
+		List<Locale> supportedLanguages = _transl.supportedLanguages();
+		if(supportedLanguages == null)
+		{
+			sendTextToChat("Error retrieving supported languages list", updateMessage.getChatId());
+		}
+		else
+		{
+
+			StringBuilder languages = new StringBuilder("List of supported languages:\n");
+			for (Locale oneLocale : supportedLanguages)
+			{
+				languages.append(oneLocale.getLanguage())
+						.append(" - ")
+						.append(oneLocale.getVariant())
+						.append("\n");
+			}
+			sendTextToChat(languages.toString(), updateMessage.getChatId());
+		}
+	}
+
+	private void executeCommandCounters(Message updateMessage)
+	{
+		List<String> permittedChats = _confManager.getValuesArray("counters.show", "permissions");
+		if(updateMessage.getFrom() != null)
+		{
+			Integer userId = updateMessage.getFrom().getId();
+			if(!permittedChats.contains(Integer.toString(userId)))
+			{
+				sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
+				return;
+			}
+		}
+
+		// send textual presentation of counters as response
+		List<String> counters = _countsManager.textual();
+		counters.forEach(c -> sendTextToChat(c, updateMessage.getChatId()));
+	}
+
+	private void executeCommandTranslate(BotCommand command, Message updateMessage)
+	{
+		List<String> permittedChats = _confManager.getValuesArray("translation", "permissions");
+		if(updateMessage.getFrom() != null)
+		{
+			Integer userId = updateMessage.getFrom().getId();
+			if(!permittedChats.contains(Integer.toString(userId)))
+			{
+				sendTextToChat("You are not allowed to perform translation.", updateMessage.getChatId());
+				return;
+			}
+		}
+
+		Locale srcTranslation = command.parameters().get("from") == null ? Locale.forLanguageTag("") : Locale.forLanguageTag(command.parameters().get("from"));
+		Locale destTranslation = Locale.forLanguageTag(command.parameters().get("to"));
+		String sourceText = command.parameters().get("text");
+		Translation translFrom = Translation.SourceTranslation(srcTranslation, destTranslation, sourceText);
+		Translation translTo = _transl.translate(translFrom);
+
+		if(translTo.getResultText() == null || translTo.getResultText().isEmpty())
+		{
+			_countsManager.changeCounterValue(_counterTranslErrors, 1);
+			sendTextToChat("Error translating text", updateMessage.getChatId());
+		}
+		else
+		{
+			sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
+			_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
+			_countsManager.changeCounterValue(_counterTotalChars, translFrom.getSourceText().length());
+			_countsManager.setCounterValue(_counterMsgLength, translFrom.getSourceText().length());
+			_countsManager.changeCounterValue(_counterTranslates, 1);
 		}
 	}
 
@@ -347,46 +417,78 @@ public class Telegrammer extends TelegramLongPollingBot
 				command = BotCommand.CreateCommand(COUNTERS);
 				break;
 			}
+			case COUNTERDELTA:
+			{
+				command = parseCommandCounterDelta(commandText);
+				break;
+			}
 			case TRANSLATE:
 			{
-				Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
-				Matcher matcher = rxCommand.matcher(commandText);
-				if(matcher.find())
-				{
-					String fromLang = matcher.group(2);
-					String toLang = matcher.group(3);
-					String text = matcher.group(4);
-					Map<String, String> params = new HashMap<>();
-					params.put("from", fromLang);
-					params.put("to", toLang);
-					params.put("text", text);
-					command = BotCommand.CreateCommand(TRANSLATE_FROM_TO, params);
-					break;
-				}
-
-				rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
-				matcher = rxCommand.matcher(commandText);
-
-				if(matcher.find())
-				{
-					String toLang = matcher.group(2);
-					String text = matcher.group(3);
-					Map<String, String> params = new HashMap<>();
-					params.put("from", "");
-					params.put("to", toLang);
-					params.put("text", text);
-					command = BotCommand.CreateCommand(TRANSLATE_TO, params);
-					break;
-				}
-
-				command = BotCommand.CreateCommand(NOTFULL);
-
+				command = parseCommandTranslate(commandText);
 				break;
 			}
 			default:
 				break;
 		}
 
+		return command;
+	}
+
+	private BotCommand parseCommandTranslate(String commandText)
+	{
+		BotCommand command;
+		Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
+		Matcher matcher = rxCommand.matcher(commandText);
+		if(matcher.find())
+		{
+			String fromLang = matcher.group(2);
+			String toLang = matcher.group(3);
+			String text = matcher.group(4);
+			Map<String, String> params = new HashMap<>();
+			params.put("from", fromLang);
+			params.put("to", toLang);
+			params.put("text", text);
+			command = BotCommand.CreateCommand(TRANSLATE_FROM_TO, params);
+			return command;
+		}
+
+		rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
+		matcher = rxCommand.matcher(commandText);
+
+		if(matcher.find())
+		{
+			String toLang = matcher.group(2);
+			String text = matcher.group(3);
+			Map<String, String> params = new HashMap<>();
+			params.put("from", "");
+			params.put("to", toLang);
+			params.put("text", text);
+			command = BotCommand.CreateCommand(TRANSLATE_TO, params);
+			return command;
+		}
+
+		command = BotCommand.CreateCommand(NOTFULL);
+		return command;
+	}
+
+	private BotCommand parseCommandCounterDelta(String commandText)
+	{
+		BotCommand command;
+		// /command$1 <counter name>$2 <period name (month|week|day)>$3
+		Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S+)\\s+(month)\\s*$", Pattern.CASE_INSENSITIVE);
+		Matcher matcher = rxCommand.matcher(commandText);
+		if(matcher.find())
+		{
+			String counterName = matcher.group(2);
+			String periodName = matcher.group(3);
+			Map<String, String> params = new HashMap<>();
+			params.put("counter", counterName);
+			params.put("period", periodName);
+			command = BotCommand.CreateCommand(COUNTERDELTA, params);
+			return command;
+		}
+
+		command = BotCommand.CreateCommand(NOTFULL);
 		return command;
 	}
 

@@ -16,6 +16,7 @@ public class BotCommand
 		TRANSLATE_FROM_TO("translate"),
 		LANGUAGES("languages"),
 		COUNTERS("counters"),
+		COUNTERDELTA("counterdelta"),
 		UNKNOWN("unknown"),
 		NOTFULL("notfull"),
 		NOP("nop");
@@ -53,6 +54,9 @@ public class BotCommand
 					break;
 				case "counters":
 					command = COUNTERS;
+					break;
+				case "counterdelta":
+					command = COUNTERDELTA;
 					break;
 				case "languages":
 					command = LANGUAGES;

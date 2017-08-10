@@ -7,37 +7,19 @@ public class Counter
 	private String counterName;
 	private Float oldValue;
 	private Float counterValue;
+	private Float maxValue;
 	private Date created;
 	private Date updated;
 
-	public Float getOldValue()
-	{
-		return oldValue;
-	}
 
-	public Float getCounterValue()
-	{
-		return counterValue;
-	}
-
-	public Date getCreated()
-	{
-		return created;
-	}
-
-	public Date getUpdated()
-	{
-		return updated;
-	}
-
-	private Counter(String counterName, Float oldValue, Float counterValue, Date created, Date updated)
-	{
-		this.counterName = counterName;
-		this.oldValue = oldValue;
-		this.counterValue = counterValue;
-		this.created = created;
-		this.updated = updated;
-	}
+//	private Counter(String counterName, Float oldValue, Float counterValue, Date created, Date updated)
+//	{
+//		this.counterName = counterName;
+//		this.oldValue = oldValue;
+//		this.counterValue = counterValue;
+//		this.created = created;
+//		this.updated = updated;
+//	}
 
 	public String name()
 	{
@@ -61,11 +43,37 @@ public class Counter
 		return new CounterBuilder(counter);
 	}
 
+	public Float getOldValue()
+	{
+		return oldValue;
+	}
+
+	public Float getCounterValue()
+	{
+		return counterValue;
+	}
+
+	public Date getCreated()
+	{
+		return created;
+	}
+
+	public Date getUpdated()
+	{
+		return updated;
+	}
+
+	public Float getMaxValue()
+	{
+		return maxValue;
+	}
+
 	public static class CounterBuilder
 	{
 		private String counterName;
 		private Float oldValue = Float.NaN;
 		private Float counterValue;
+		private Float maxValue = Float.NaN;
 		private Date created = new Date();
 		private Date updated = new Date();
 
@@ -113,9 +121,23 @@ public class Counter
 			return this;
 		}
 
+		CounterBuilder setMaxValue(Float maxValue)
+		{
+			this.maxValue = maxValue;
+			return this;
+		}
+
 		Counter build()
 		{
-			return new Counter(counterName, oldValue, counterValue, created, updated);
+			Counter counter = new Counter();
+			counter.counterName = counterName;
+			counter.maxValue = maxValue;
+			counter.counterValue = counterValue;
+			counter.oldValue = oldValue;
+			counter.created = created;
+			counter.updated = updated;
+
+			return counter;
 		}
 	}
 }

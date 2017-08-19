@@ -13,15 +13,6 @@
         </encoder>
     </appender>
 
-    <appender name="STATISTICFILE" class="ch.qos.logback.core.FileAppender">
-        <filter class="com.sapisoft.translator.countrer"/>
-        <file>${ffs.logpath}/translation_statistic.log</file>
-        <append>false</append>
-        <encoder>
-            <pattern>%msg%n</pattern>
-        </encoder>
-    </appender>
-
     <root level="DEBUG">
         <appender-ref ref="FILE" />
         <appender-ref ref="STDOUT" />

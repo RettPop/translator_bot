@@ -14,6 +14,7 @@ import org.telegram.telegrambots.ApiContextInitializer;
 import org.telegram.telegrambots.TelegramBotsApi;
 import org.telegram.telegrambots.api.methods.send.SendMessage;
 import org.telegram.telegrambots.api.objects.*;
+import org.telegram.telegrambots.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 
@@ -35,6 +36,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	private static final String CLASS_VERSION = new Object(){}.getClass().getPackage().getImplementationVersion();
 
 	private static final String SECRETS_GROUP = "com.sapisoft.bots.Translator";
+	private static final String SECRETS_GROUP_TEST = "com.sapisoft.bots.Translator.test";
 
 	private String _apiKey;
 	private String _botName;
@@ -497,7 +499,15 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		if (_botName == null)
 		{
-			SimpleSecret botNameSecret = _secretsManager.getSecret("botName", SECRETS_GROUP);
+			String secretsGroup = SECRETS_GROUP;
+
+			// for tests will use separate bot
+			if(null == CLASS_VERSION || CLASS_VERSION.isEmpty())
+			{
+				secretsGroup = SECRETS_GROUP_TEST;
+			}
+
+			SimpleSecret botNameSecret = _secretsManager.getSecret("botName", secretsGroup);
 			if (botNameSecret != null)
 			{
 				_botName = botNameSecret.getSecret();
@@ -512,7 +522,15 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		if (_apiKey == null)
 		{
-			SimpleSecret simpleSecret = _secretsManager.getSecret("botToken", SECRETS_GROUP);
+			String secretsGroup = SECRETS_GROUP;
+
+			// for tests will use separate bot
+			if(null == CLASS_VERSION || CLASS_VERSION.isEmpty())
+			{
+				secretsGroup = SECRETS_GROUP_TEST;
+			}
+
+			SimpleSecret simpleSecret = _secretsManager.getSecret("botToken", secretsGroup);
 			if (simpleSecret != null)
 			{
 				_apiKey = simpleSecret.getSecret();

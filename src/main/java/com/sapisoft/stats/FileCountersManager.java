@@ -143,6 +143,33 @@ public class FileCountersManager implements CountersManager
 		return states;
 	}
 
+	@Override
+	public List<Counter> getCounters()
+	{
+		return new ArrayList<>(_counters.values());
+	}
+
+	@Override
+	public Integer getCounterId(Counter counter)
+	{
+		return counter.name().hashCode();
+	}
+
+	@Override
+	public Counter getCounterById(Integer id)
+	{
+		Counter counter = null;
+		for (String key : _counters.keySet())
+		{
+			if(key.hashCode() == id)
+			{
+				counter = _counters.get(key);
+			}
+		}
+
+		return counter;
+	}
+
 	public List<String> textual()
 	{
 		List<String> counters = new ArrayList<>();

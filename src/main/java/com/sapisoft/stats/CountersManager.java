@@ -10,4 +10,7 @@ public interface CountersManager
 	Float getCounterValue(Counter counter);
 	Counter getCounter(Counter counter);
 	List<Counter> getCounterStatesForPeriod(Counter counter, Date startDate, Date lastDate);
+	List<Counter> getCounters();
+	Integer getCounterId(Counter counter);
+	Counter getCounterById(Integer id);
 }

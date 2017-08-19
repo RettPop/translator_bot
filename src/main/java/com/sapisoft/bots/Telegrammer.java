@@ -14,12 +14,12 @@ import org.telegram.telegrambots.ApiContextInitializer;
 import org.telegram.telegrambots.TelegramBotsApi;
 import org.telegram.telegrambots.api.methods.send.SendMessage;
 import org.telegram.telegrambots.api.objects.*;
+import org.telegram.telegrambots.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -45,10 +45,11 @@ public class Telegrammer extends TelegramLongPollingBot
 	private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
 	private Map<Long, List<TranslationCommand>> _routing = new HashMap<>();
 	private final FileCountersManager _countsManager;
-	private Counter _counterTranslates = Counter.fromString("translations.Number");
-	private Counter _counterTotalChars = Counter.fromString("translations.Characters");
-	private Counter _counterMsgLength = Counter.fromString("translations.MessageLength");
-	private Counter _counterTranslErrors = Counter.fromString("translations.Error");
+	private final Counter COUNTER_TRANSLATES = Counter.fromString("translations.Number");
+	private final Counter COUNTER_TOTAL_CHARS = Counter.fromString("translations.Characters");
+	private final Counter COUNTER_MSG_LENGTH = Counter.fromString("translations.MessageLength");
+	private final Counter COUNTER_TRANSL_ERRORS = Counter.fromString("translations.Error");
+	private final Counter COUNTER_COMMANDS_TOTAL = Counter.fromString("telegrammer.Commands");
 
 	public Telegrammer()
 	{
@@ -85,11 +86,16 @@ public class Telegrammer extends TelegramLongPollingBot
 		BotCommand command = findCommand(update);
 		if (null != command)
 		{
+			_countsManager.changeCounterValue(COUNTER_COMMANDS_TOTAL, 1);
 			Message message = update.hasMessage() ? update.getMessage() : update.getChannelPost();
 			executeCommand(command, message);
 		}
 		else
 		{
+			if(update.hasCallbackQuery())
+			{
+				processCallback(update);
+			}
 			if (update.hasMessage() && update.getMessage().hasText())
 			{
 				User usr = update.getMessage().getFrom();
@@ -106,6 +112,36 @@ public class Telegrammer extends TelegramLongPollingBot
 				LOG.info("Message arrived from channel: {} from user {} ", sourceChat, usr);
 
 				processChatMessage(update);
+			}
+		}
+	}
+
+	private void processCallback(Update update)
+	{
+		CallbackQuery callbackQuery = update.getCallbackQuery();
+		String[] data = callbackQuery.getData().split(":");
+		if(data.length < 3)
+		{
+			executeCommand(BotCommand.CreateCommand(NOTFULL), update.getMessage());
+			return;
+		}
+
+		if(BotCommand.Commands.COUNTERDELTA.toString().compareToIgnoreCase(data[0]) == 0)
+		{
+			Integer counterId = Integer.parseInt(data[1]);
+			Counter counter = _countsManager.getCounterById(counterId);
+			if(counter != null)
+			{
+				String period = data[2];
+				HashMap<String, String> params = new HashMap<>();
+				params.put("counter", counter.name());
+				params.put("period", period);
+				BotCommand command = BotCommand.CreateCommand(BotCommand.Commands.COUNTERDELTA, params);
+				executeCommandCounterdelta(command, callbackQuery.getMessage(), callbackQuery.getFrom());
+			}
+			else
+			{
+				sendTextToChat("Unknown counter", update.getMessage().getChatId());
 			}
 		}
 	}
@@ -144,9 +180,9 @@ public class Telegrammer extends TelegramLongPollingBot
 
 			if (!translatedMsg.getResultText().isEmpty())
 			{
-				_countsManager.changeCounterValue(_counterTranslates, 1);
-				_countsManager.changeCounterValue(_counterTotalChars, msg.getText().length());
-				_countsManager.setCounterValue(_counterMsgLength, msg.getText().length());
+				_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
+				_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, msg.getText().length());
+				_countsManager.setCounterValue(COUNTER_MSG_LENGTH, msg.getText().length());
 				_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + sourceChat.getId()), 1);
 
 				String report = translatedMsg.getResultText()
@@ -158,7 +194,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			}
 			else
 			{
-				_countsManager.changeCounterValue(_counterTranslErrors, 1);
+				_countsManager.changeCounterValue(COUNTER_TRANSL_ERRORS, 1);
 				LOG.info("Empty message translation arrived");
 			}
 		}
@@ -241,7 +277,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			}
 			case COUNTERDELTA:
 			{
-				executeCommandCounterdelta(command, updateMessage);
+				executeCommandCounterdelta(command, updateMessage, updateMessage.getFrom());
 				break;
 			}
 			case TRANSLATE_TO:
@@ -265,17 +301,22 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 	}
 
-	private void executeCommandCounterdelta(BotCommand command, Message updateMessage)
+	private void executeCommandCounterdelta(BotCommand command, Message updateMessage, User user)
 	{
 		List<String> permittedChats = _confManager.getValuesArray("counters.show", "permissions");
-		if(updateMessage.getFrom() != null)
+		if(user != null)
 		{
-			Integer userId = updateMessage.getFrom().getId();
+			Integer userId = user.getId();
 			if(!permittedChats.contains(Integer.toString(userId)))
 			{
 				sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
 				return;
 			}
+		}
+		else
+		{
+			sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
+			return;
 		}
 
 		Counter counter = Counter.fromString(command.parameters().get("counter"));
@@ -346,8 +387,43 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 
 		// send textual presentation of counters as response
-		List<String> counters = _countsManager.textual();
-		counters.forEach(c -> sendTextToChat(c, updateMessage.getChatId()));
+		List<Counter> counters = _countsManager.getCounters();
+		for (Counter oneCounter : counters)
+		{
+			StringBuilder str = new StringBuilder("Counter:\n");
+			str.append("name: ").append(oneCounter.name()).append("\n");
+			str.append("id: ").append(_countsManager.getCounterId(oneCounter)).append("\n");
+			str.append("value: ").append(oneCounter.getCounterValue()).append("\n");
+			str.append("old value: ").append(oneCounter.getOldValue()).append("\n");
+			str.append("max value: ").append(oneCounter.getMaxValue()).append("\n");
+			str.append("updated: ").append(oneCounter.getUpdated()).append("\n");
+			str.append("created: ").append(oneCounter.getCreated()).append("\n");
+
+			// adding button under the counter
+			Integer id = _countsManager.getCounterId(oneCounter);
+			InlineKeyboardMarkup keyboardMarkup = new InlineKeyboardMarkup();
+
+			InlineKeyboardButton deltaBtn = new InlineKeyboardButton()
+					.setText("delta for month")
+					.setCallbackData(BotCommand.Commands.COUNTERDELTA + ":" + id + ":month");
+			keyboardMarkup.setKeyboard(Arrays.asList(Collections.singletonList(deltaBtn)));
+
+			SendMessage btnMessage = new SendMessage();
+//			btnMessage.enableMarkdown(true);
+			btnMessage.setText(str.toString());
+			btnMessage.setChatId(updateMessage.getChatId());
+			btnMessage.setReplyMarkup(keyboardMarkup);
+
+			try
+			{
+				execute(btnMessage);
+				LOG.debug("Sending keyboard: {}", btnMessage);
+			}
+			catch (TelegramApiException e)
+			{
+				LOG.debug("Error sending keyboard to the channel: ", e);
+			}
+		}
 	}
 
 	private void executeCommandTranslate(BotCommand command, Message updateMessage)
@@ -371,16 +447,16 @@ public class Telegrammer extends TelegramLongPollingBot
 
 		if(translTo.getResultText() == null || translTo.getResultText().isEmpty())
 		{
-			_countsManager.changeCounterValue(_counterTranslErrors, 1);
+			_countsManager.changeCounterValue(COUNTER_TRANSL_ERRORS, 1);
 			sendTextToChat("Error translating text", updateMessage.getChatId());
 		}
 		else
 		{
 			sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
 			_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
-			_countsManager.changeCounterValue(_counterTotalChars, translFrom.getSourceText().length());
-			_countsManager.setCounterValue(_counterMsgLength, translFrom.getSourceText().length());
-			_countsManager.changeCounterValue(_counterTranslates, 1);
+			_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, translFrom.getSourceText().length());
+			_countsManager.setCounterValue(COUNTER_MSG_LENGTH, translFrom.getSourceText().length());
+			_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
 		}
 	}
 

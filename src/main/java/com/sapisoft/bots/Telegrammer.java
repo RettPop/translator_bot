@@ -19,6 +19,7 @@ import org.telegram.telegrambots.api.objects.replykeyboard.buttons.InlineKeyboar
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
@@ -37,6 +38,9 @@ public class Telegrammer extends TelegramLongPollingBot
 
 	private static final String SECRETS_GROUP = "com.sapisoft.bots.Translator";
 	private static final String SECRETS_GROUP_TEST = "com.sapisoft.bots.Translator.test";
+	public static final String PERIOD_MONTH = "month";
+	public static final String PERIOD_WEEK = "week";
+	public static final String PERIOD_DAY = "day";
 
 	private String _apiKey;
 	private String _botName;
@@ -330,14 +334,33 @@ public class Telegrammer extends TelegramLongPollingBot
 
 		String periodName = command.parameters().get("period");
 		Date lastDate = new Date();
-		Date startDate = null;
-		if("month".equals(periodName))
+		Date startDate = lastDate;
+		if(PERIOD_MONTH.equals(periodName))
 		{
 			startDate = Date.from(LocalDate.now()
 					.atStartOfDay()
 					.withDayOfMonth(1)
 					.atZone(ZoneId.systemDefault())
 					.toInstant());
+		}
+		else if(PERIOD_DAY.equals(periodName))
+		{
+			startDate = Date.from(LocalDate.now()
+					.atStartOfDay()
+					.atZone(ZoneId.systemDefault())
+					.toInstant());
+		}
+		else if(PERIOD_WEEK.equals(periodName))
+		{
+			startDate = Date.from(LocalDate.now()
+					.atStartOfDay()
+					.with(DayOfWeek.MONDAY)
+					.atZone(ZoneId.systemDefault())
+					.toInstant());
+		}
+		else
+		{
+			executeCommand(BotCommand.CreateCommand(NOTFULL), updateMessage);
 		}
 
 		List<Counter> counterStates = _countsManager.getCounterStatesForPeriod(counter, startDate, lastDate);
@@ -348,7 +371,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 
 		float delta = counterStates.get(counterStates.size() - 1).getCounterValue() - counterStates.get(0).getCounterValue();
-		sendTextToChat("Counter " + counter.name() + " delta since beginning of month is: " + delta, updateMessage.getChatId());
+		sendTextToChat("Counter " + counter.name() + " delta since beginning of " + periodName + " is: " + delta, updateMessage.getChatId());
 	}
 
 	private void executeCommandLanguages(Message updateMessage)
@@ -403,10 +426,14 @@ public class Telegrammer extends TelegramLongPollingBot
 			Integer id = _countsManager.getCounterId(oneCounter);
 			InlineKeyboardMarkup keyboardMarkup = new InlineKeyboardMarkup();
 
-			InlineKeyboardButton deltaBtn = new InlineKeyboardButton()
-					.setText("delta for month")
-					.setCallbackData(BotCommand.Commands.COUNTERDELTA + ":" + id + ":month");
-			keyboardMarkup.setKeyboard(Arrays.asList(Collections.singletonList(deltaBtn)));
+			ArrayList<InlineKeyboardButton> buttons = new ArrayList<>();
+			for (String period : Arrays.asList(PERIOD_MONTH, PERIOD_WEEK, PERIOD_DAY))
+			{
+				buttons.add(new InlineKeyboardButton()
+					.setText("Δ " + period)
+					.setCallbackData(BotCommand.Commands.COUNTERDELTA + ":" + id + ":" + period));
+			}
+			keyboardMarkup.setKeyboard(Arrays.asList(buttons));
 
 			SendMessage btnMessage = new SendMessage();
 //			btnMessage.enableMarkdown(true);
@@ -553,7 +580,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		BotCommand command;
 		// /command$1 <counter name>$2 <period name (month|week|day)>$3
-		Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S+)\\s+(month)\\s*$", Pattern.CASE_INSENSITIVE);
+		Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S+)\\s+(month|week|day)\\s*$", Pattern.CASE_INSENSITIVE);
 		Matcher matcher = rxCommand.matcher(commandText);
 		if(matcher.find())
 		{

@@ -2,12 +2,14 @@ package com.sapisoft.bots;
 
 import com.sapisoft.azuretranslator.AzureTranslator;
 import com.sapisoft.config.FileConfigManager;
+import com.sapisoft.googletranslator.GoogleTranslator;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.stats.Counter;
 import com.sapisoft.stats.FileCountersManager;
 import com.sapisoft.translator.Translation;
 import com.sapisoft.translator.Translator;
+import com.sapisoft.utils.ShortenUrlExpander;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.ApiContextInitializer;
@@ -19,6 +21,7 @@ import org.telegram.telegrambots.api.objects.replykeyboard.buttons.InlineKeyboar
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 
+import java.io.IOException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -182,25 +185,27 @@ public class Telegrammer extends TelegramLongPollingBot
 					message.getText());
 			Translation translatedMsg = _transl.translate(translation);
 
-			if (!translatedMsg.getResultText().isEmpty())
-			{
-				_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
-				_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, msg.getText().length());
-				_countsManager.setCounterValue(COUNTER_MSG_LENGTH, msg.getText().length());
-				_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + sourceChat.getId()), 1);
-
-				String report = translatedMsg.getResultText()
-						+ "\n<i>(" + translatedMsg.getSourceLocale().getLanguage() + "->" + translatedMsg.getDestinationLocale().getLanguage()
-						+ " from \"" + update.getChannelPost().getChat().getTitle() + "\")</i>";
-
-				LOG.info("Sending message to channel: {}", oneCommand.targetChannelId());
-				sendTextToChat(report, oneCommand.targetChannelId());
-			}
-			else
+			if (translatedMsg.getResultText().isEmpty())
 			{
 				_countsManager.changeCounterValue(COUNTER_TRANSL_ERRORS, 1);
 				LOG.info("Empty message translation arrived");
+				return;
 			}
+
+			String linksText = getTranslatedLinksText(msg, new GoogleTranslator(), translatedMsg);
+
+			_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
+			_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, msg.getText().length());
+			_countsManager.setCounterValue(COUNTER_MSG_LENGTH, msg.getText().length());
+			_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + sourceChat.getId()), 1);
+
+			String report = translatedMsg.getResultText()
+					+ linksText
+					+ "\n<i>(" + translatedMsg.getSourceLocale().getLanguage() + "->" + translatedMsg.getDestinationLocale().getLanguage()
+					+ " from \"" + update.getChannelPost().getChat().getTitle() + "\")</i>";
+
+			LOG.info("Sending message to channel: {}", oneCommand.targetChannelId());
+			sendTextToChat(report, oneCommand.targetChannelId());
 		}
 	}
 
@@ -476,15 +481,82 @@ public class Telegrammer extends TelegramLongPollingBot
 		{
 			_countsManager.changeCounterValue(COUNTER_TRANSL_ERRORS, 1);
 			sendTextToChat("Error translating text", updateMessage.getChatId());
+			return;
 		}
-		else
+
+		String linksText = getTranslatedLinksText(updateMessage, new GoogleTranslator(), translTo);
+
+		sendTextToChat(translTo.getResultText() + linksText, updateMessage.getChatId());
+		_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
+		_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, translFrom.getSourceText().length());
+		_countsManager.setCounterValue(COUNTER_MSG_LENGTH, translFrom.getSourceText().length());
+		_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
+	}
+
+	private String getTranslatedLinksText(Message updateMessage, Translator translator, Translation translTo)
+	{
+		List<String> msgURLs = getMessageURLs(updateMessage);
+		StringBuilder linksText = new StringBuilder();
+		if(msgURLs.size() > 0)
 		{
-			sendTextToChat(translTo.getResultText(), updateMessage.getChatId());
-			_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
-			_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, translFrom.getSourceText().length());
-			_countsManager.setCounterValue(COUNTER_MSG_LENGTH, translFrom.getSourceText().length());
-			_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
+			int number = 1;
+			ShortenUrlExpander expander = new ShortenUrlExpander();
+			linksText.append("\nLinks:");
+			for (String oneURL : msgURLs)
+			{
+				try
+				{
+					String longURL = expander.expand(oneURL);
+					String translationURL = translator.pageTranslationURL(longURL, translTo);
+					linksText.append("\n" + (number++) + ": ")
+							.append(translationURL);
+				}
+				catch (IOException e)
+				{
+					LOG.debug("Error expanding URL {}", oneURL, e);
+				}
+			}
 		}
+		return linksText.toString();
+	}
+
+//	private String getTranslatedLinksText(Message updateMessage, Translator translator, Translation translation)
+//	{
+//		StringBuilder msgTail = new StringBuilder();
+//		List<String> msgURLs = getMessageURLs(updateMessage);
+//
+//		for (MessageEntity oneEntity : updateMessage.getEntities())
+//		{
+//			if("url".equals(oneEntity.getType()))
+//			{
+//				try
+//				{
+//					String longURL = expander.expand(oneEntity.getText());
+//					String translationURL = googleTranslator.pageTranslationURL(longURL, translTo);
+//					msgTail.append("\n")
+//							.append(translationURL);
+//				}
+//				catch (IOException e)
+//				{
+//					LOG.debug("Error expanding URL {}", oneEntity.getText(), e);
+//				}
+//			}
+//		}
+//	}
+
+	private List<String> getMessageURLs(Message updateMessage)
+	{
+		ArrayList<String> urls = new ArrayList<>();
+
+		for (MessageEntity oneEntity : updateMessage.getEntities())
+		{
+			if("url".equals(oneEntity.getType()))
+			{
+				urls.add(oneEntity.getText());
+			}
+		}
+
+		return urls;
 	}
 
 	BotCommand parseCommand(String commandText)

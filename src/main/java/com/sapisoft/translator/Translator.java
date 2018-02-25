@@ -1,5 +1,6 @@
 package com.sapisoft.translator;
 
+import java.net.URL;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -14,4 +15,5 @@ public interface Translator
     List<Locale> supportedLanguages();
     Map<Locale, List<Locale>> supportedDirections();
     Translation translate(Translation message);
+    String pageTranslationURL(String sourceURL, Translation message);
 }

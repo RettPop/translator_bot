@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -51,6 +52,8 @@ public class AzureTranslator implements Translator
 
     private static final String SECRETS_GROUP = "com.sapisoft.azuretranslator";
 	private static final long SUPPORTED_LANGUAGES_UPDATE_PERIOD_MILLIS = TimeUnit.HOURS.toMillis(24); // 24 hours
+	private static final String SITETRANSLATOR_MICROSOFTTRANSLATOR = "https://www.microsofttranslator.com/bv.aspx"; //from=&to=en&a=";
+
 	private String _subscription;
     private List<Locale> _supportedLaguages;
     private long _lastSupportedLanguagesFetchTime;
@@ -118,7 +121,22 @@ public class AzureTranslator implements Translator
                 .build();
     }
 
-    private String getSubscription()
+	@Override
+	public String pageTranslationURL(String sourceURL, Translation message)
+	{
+		String formURL = new StringBuilder(SITETRANSLATOR_MICROSOFTTRANSLATOR)
+				.append("?")
+				.append("from=").append(message.getSourceLocale())
+				.append("&")
+				.append("to=").append(message.getDestinationLocale())
+				.append("&")
+				.append("a=").append(sourceURL)
+				.toString();
+
+		return formURL;
+	}
+
+	private String getSubscription()
     {
         if(_subscription == null)
         {
@@ -153,30 +171,33 @@ public class AzureTranslator implements Translator
 		HttpResponse response = httpClient.execute(request);
 		HttpEntity entity = response.getEntity();
 
-		if(response.getStatusLine().getStatusCode() == HttpStatus.SC_OK)
+		if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK)
 		{
-			String result = EntityUtils.toString(entity);
+			LOG.debug("Received NOK from translation service: {}", response.toString());
+			return null;
+		}
 
-			try
+		String result = EntityUtils.toString(entity);
+
+		try
+		{
+			DocumentBuilder docBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+			Document doc = docBuilder.parse(new InputSource(new StringReader(result)));
+			XPath path = XPathFactory.newInstance().newXPath();
+			XPathExpression expr = path.compile("/string");
+			NodeList nodeList = (NodeList) expr.evaluate(doc.getDocumentElement(), XPathConstants.NODESET);
+			for (int idx = 0; idx < nodeList.getLength(); idx++)
 			{
-				DocumentBuilder docBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-				Document doc = docBuilder.parse(new InputSource(new StringReader(result)));
-				XPath path = XPathFactory.newInstance().newXPath();
-				XPathExpression expr = path.compile("/string");
-				NodeList nodeList = (NodeList) expr.evaluate(doc.getDocumentElement(), XPathConstants.NODESET);
-				for (int idx = 0; idx < nodeList.getLength(); idx++)
+				Node node = nodeList.item(idx);
+				if("string".equals(node.getNodeName()))
 				{
-					Node node = nodeList.item(idx);
-					if("string".equals(node.getNodeName()))
-					{
-						return node.getTextContent();
-					}
+					return node.getTextContent();
 				}
 			}
-			catch (XPathExpressionException | SAXException | ParserConfigurationException e)
-			{
-				LOG.debug("Error parsing translation engine answer: ", e);
-			}
+		}
+		catch (XPathExpressionException | SAXException | ParserConfigurationException e)
+		{
+			LOG.debug("Error parsing translation engine answer: ", e);
 		}
 
 		return null;

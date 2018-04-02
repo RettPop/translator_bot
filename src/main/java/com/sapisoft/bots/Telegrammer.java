@@ -10,6 +10,7 @@ import com.sapisoft.stats.FileCountersManager;
 import com.sapisoft.translator.Translation;
 import com.sapisoft.translator.Translator;
 import com.sapisoft.utils.ShortenUrlExpander;
+import org.fest.util.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.ApiContextInitializer;
@@ -44,6 +45,8 @@ public class Telegrammer extends TelegramLongPollingBot
 	public static final String PERIOD_MONTH = "month";
 	public static final String PERIOD_WEEK = "week";
 	public static final String PERIOD_DAY = "day";
+	public static final String CONFIG_COUNTERS_FILE = "countersFile";
+	public static final String CONFIG_COUNTERS_DIR = "countersDir";
 
 	private String _apiKey;
 	private String _botName;
@@ -51,6 +54,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	private final FileConfigManager _confManager = new FileConfigManager("/config/config.json");
 	private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
 	private Map<Long, List<TranslationCommand>> _routing = new HashMap<>();
+
 	private final FileCountersManager _countsManager;
 	private final Counter COUNTER_TRANSLATES = Counter.fromString("translations.Number");
 	private final Counter COUNTER_TOTAL_CHARS = Counter.fromString("translations.Characters");
@@ -65,8 +69,13 @@ public class Telegrammer extends TelegramLongPollingBot
 		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.SourceTranslation(Translator.SWEDISH, Locale.ENGLISH, ""));
 		_routing.put(sourceChatId, Collections.singletonList(command));
 
-		String countersFile = _confManager.getOption("countersFile", "statistics");
-		String countersDir = _confManager.getOption("countersDir", "statistics");
+		// read system properties before. If null, read from config
+		String countersFile = Optional.ofNullable(System.getProperty(CONFIG_COUNTERS_FILE))
+				.orElse(_confManager.getOption(CONFIG_COUNTERS_FILE, "statistics"));
+
+		String countersDir = Optional.ofNullable(System.getProperty(CONFIG_COUNTERS_DIR))
+				.orElse(_confManager.getOption(CONFIG_COUNTERS_DIR, "statistics"));
+
 		_countsManager = new FileCountersManager(countersFile, countersDir);
 
 		LOG.info("Starting v.{}", CLASS_VERSION);
@@ -731,4 +740,11 @@ public class Telegrammer extends TelegramLongPollingBot
 			LOG.debug("Error sending message to the channel: ", e);
 		}
 	}
+
+	@VisibleForTesting
+	FileCountersManager getCountsManager()
+	{
+		return _countsManager;
+	}
+
 }

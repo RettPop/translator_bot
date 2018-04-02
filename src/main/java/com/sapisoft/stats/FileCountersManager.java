@@ -2,6 +2,7 @@ package com.sapisoft.stats;
 
 import com.google.gson.*;
 import org.apache.commons.lang3.StringEscapeUtils;
+import org.fest.util.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +26,7 @@ public class FileCountersManager implements CountersManager
 	public static final String CSV_SEPARATOR = ";";
 	public static final String COUNTER_FILE_PREFIX = "counter_";
 	public static final int COLUMN_VALUE = 2;
+
 	private final String _fileName;
 	private final String _countersDir;
 
@@ -342,4 +344,17 @@ public class FileCountersManager implements CountersManager
 			}
 		}
 	}
+
+	@VisibleForTesting
+	public String getCountersFileName()
+	{
+		return _fileName;
+	}
+
+	@VisibleForTesting
+	public String getCountersDir()
+	{
+		return _countersDir;
+	}
+
 }

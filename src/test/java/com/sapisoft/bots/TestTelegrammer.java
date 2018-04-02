@@ -1,10 +1,7 @@
 package com.sapisoft.bots;
 
+import com.sapisoft.stats.FileCountersManager;
 import org.junit.Test;
-
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.Date;
 
 import static com.sapisoft.bots.BotCommand.Commands.*;
 import static org.fest.assertions.api.Assertions.assertThat;
@@ -69,5 +66,23 @@ public class TestTelegrammer
 		BotCommand command = telegrammer.parseCommand("not a command text");
 		assert(command.command())
 				.equals(NOP);
+	}
+
+	@Test
+	public void testShouldReadCountersFileAndDirFromSystemProperty()
+	{
+		String countersFile = "/var/transbot/counters.json";
+		System.setProperty(Telegrammer.CONFIG_COUNTERS_FILE, countersFile);
+		String countersDir = "/var/transbot/counters/";
+		System.setProperty(Telegrammer.CONFIG_COUNTERS_DIR, countersDir);
+		Telegrammer telegrammer = new Telegrammer();
+		if(telegrammer.getCountsManager() instanceof FileCountersManager)
+		{
+			FileCountersManager countersManager = telegrammer.getCountsManager();
+			assertThat(countersManager.getCountersDir())
+					.isEqualTo(countersDir);
+			assertThat(countersManager.getCountersFileName())
+					.isEqualTo(countersFile);
+		}
 	}
 }

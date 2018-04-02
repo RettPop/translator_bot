@@ -142,4 +142,5 @@ public class TestFileCountersManager
 		assertThat(states.get(states.size() - 1).getCounterValue())
 				.isEqualTo(2);
 	}
+
 }

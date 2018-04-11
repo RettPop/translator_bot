@@ -1,0 +1,16 @@
+{
+  "1":
+  {
+    "sourceChat": -1001087417333,
+    "destinationChat": -1001078341977,
+    "sourceLocale":"sv",
+    "destinationLocale":"en"
+  },
+  "2":
+  {
+    "sourceChat": -1001172915634,
+    "destinationChat": -1001078341977,
+    "sourceLocale":"ru",
+    "destinationLocale":"en"
+  }
+}

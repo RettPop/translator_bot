@@ -10,7 +10,7 @@ import java.util.Map;
  */
 public interface Translator
 {
-    static public final Locale SWEDISH = Locale.forLanguageTag("sv");
+    Locale SWEDISH = Locale.forLanguageTag("sv");
 
     List<Locale> supportedLanguages();
     Map<Locale, List<Locale>> supportedDirections();

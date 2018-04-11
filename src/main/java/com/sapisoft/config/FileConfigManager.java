@@ -1,29 +1,44 @@
 package com.sapisoft.config;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.*;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class FileConfigManager implements ConfigManager
 {
+	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
+
 	private String _fileName;
 	private JsonObject _config;
 
 	public FileConfigManager(String fileName)
 	{
 		this._fileName = fileName;
-		_config = readConfig(_fileName);
+		try
+		{
+			_config = readConfig(_fileName);
+		}
+		catch (FileNotFoundException e)
+		{
+			LOG.warn("Config file does not exist: {}", _fileName);
+			_config = new JsonObject();
+		}
 	}
 
-	private JsonObject readConfig(String fileName)
+	private JsonObject readConfig(String fileName) throws FileNotFoundException
 	{
 		InputStream in = getClass().getResourceAsStream(fileName);
+		if(null == in)
+		{
+			in = new FileInputStream(new File(fileName));
+		}
 		JsonParser parser = new JsonParser();
 		JsonObject obj = parser.parse(new BufferedReader(new InputStreamReader(in))).getAsJsonObject();
 
@@ -51,6 +66,15 @@ public class FileConfigManager implements ConfigManager
 		}
 
 		return valuesArray;
+	}
+
+	@Override
+	public List<String> getSections()
+	{
+		return _config.entrySet()
+				.stream()
+				.map(Map.Entry::getKey)
+				.collect(Collectors.toList());
 	}
 
 	public Long getLongValue(String optionName, String configSection)

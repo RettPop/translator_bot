@@ -6,6 +6,7 @@ public interface ConfigManager
 {
 	String getOption(String optionName, String configSection);
 	List<String> getValuesArray(String optionName, String configSection);
+	List<String> getSections();
 
 	default void setOption(String optionName, String configSection, String optionValue)
 	{

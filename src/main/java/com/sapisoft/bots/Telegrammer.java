@@ -1,5 +1,6 @@
 package com.sapisoft.bots;
 
+import com.google.common.collect.Lists;
 import com.sapisoft.azuretranslator.AzureTranslator;
 import com.sapisoft.config.FileConfigManager;
 import com.sapisoft.googletranslator.GoogleTranslator;
@@ -53,7 +54,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	private final Translator _transl = new AzureTranslator();
 	private final FileConfigManager _confManager = new FileConfigManager("/config/config.json");
 	private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
-	private Map<Long, List<TranslationCommand>> _routing = new HashMap<>();
+	private Map<Long, List<TranslationCommand>> _routing;
 
 	private final FileCountersManager _countsManager;
 	private final Counter COUNTER_TRANSLATES = Counter.fromString("translations.Number");
@@ -64,10 +65,7 @@ public class Telegrammer extends TelegramLongPollingBot
 
 	public Telegrammer()
 	{
-		Long sourceChatId = _confManager.getLongValue("sourceChat", "defaultRouting");
-		Long targetChatId = _confManager.getLongValue("destinationChat", "defaultRouting");
-		TranslationCommand command = TranslationCommand.createTranslation(targetChatId, Translation.SourceTranslation(Translator.SWEDISH, Locale.ENGLISH, ""));
-		_routing.put(sourceChatId, Collections.singletonList(command));
+		_routing = getRoutings();
 
 		// read system properties before. If null, read from config
 		String countersFile = Optional.ofNullable(System.getProperty(CONFIG_COUNTERS_FILE))
@@ -79,6 +77,47 @@ public class Telegrammer extends TelegramLongPollingBot
 		_countsManager = new FileCountersManager(countersFile, countersDir);
 
 		LOG.info("Starting v.{}", CLASS_VERSION);
+	}
+
+	private Map<Long, List<TranslationCommand>> getRoutings()
+	{
+		FileConfigManager routingsCfg = new FileConfigManager("/config/routings.json");
+		List<String> sections = routingsCfg.getSections();
+		HashMap<Long, ArrayList<TranslationCommand>> routingsArray = new HashMap<>();
+
+		for (String oneSection : sections)
+		{
+			Long sourceChatId = routingsCfg.getLongValue("sourceChat", oneSection);
+			Long targetChatId = routingsCfg.getLongValue("destinationChat", oneSection);
+			String srcLang = routingsCfg.getOption("sourceLocale", oneSection);
+			String dstLang = routingsCfg.getOption("destinationLocale", oneSection);
+			Translation translation = Translation.DestinationTranslation(Locale.forLanguageTag(dstLang), "");
+			if(null != srcLang)
+			{
+				translation = Translation.SourceTranslation(Locale.forLanguageTag(srcLang), Locale.forLanguageTag(dstLang), "");
+			}
+
+			TranslationCommand command = TranslationCommand.createTranslation(targetChatId, translation);
+			if(routingsArray.containsKey(sourceChatId))
+			{
+				// already have array or routes. just adding new item
+				routingsArray.get(sourceChatId).add(command);
+			}
+			else
+			{
+				// need to create new array of routes
+				routingsArray.put(sourceChatId, new ArrayList<>(Collections.singleton(command)));
+			}
+		}
+
+		// convert routes array to list
+		HashMap<Long, List<TranslationCommand>> routings = new HashMap<>();
+		for (Map.Entry<Long, ArrayList<TranslationCommand>> oneRoute : routingsArray.entrySet())
+		{
+			routings.put(oneRoute.getKey(), Collections.unmodifiableList(oneRoute.getValue()));
+		}
+
+		return routings;
 	}
 
 	public static void main(String[] args)

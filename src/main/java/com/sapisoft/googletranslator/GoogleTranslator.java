@@ -33,9 +33,15 @@ public class GoogleTranslator implements Translator
 	@Override
 	public String pageTranslationURL(String sourceURL, Translation message)
 	{
+		String sourceLocale = "auto";
+		if(null != message.getSourceLocale()) {
+			sourceLocale = message.getSourceLocale().toString();
+		}
+
 		String formURL = new StringBuilder(SITETRANSLATOR_GOOGLETRANSLATOR)
 				.append("?")
-				.append("sl=auto")
+				.append("sl=")
+				.append(sourceLocale)
 				.append("&")
 				.append("tl=").append(message.getDestinationLocale())
 				.append("&js=y&prev=_t&hl=en&ie=UTF-8")

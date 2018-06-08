@@ -552,17 +552,20 @@ public class Telegrammer extends TelegramLongPollingBot
 			linksText.append("\nLinks:");
 			for (String oneURL : msgURLs)
 			{
+				// will use base URL if will fail expanding it
+				String longURL = oneURL;
 				try
 				{
-					String longURL = expander.expand(oneURL);
-					String translationURL = translator.pageTranslationURL(longURL, translTo);
-					linksText.append("\n" + (number++) + ": ")
-							.append(translationURL);
+					longURL = expander.expand(oneURL);
 				}
 				catch (IOException e)
 				{
 					LOG.debug("Error expanding URL {}", oneURL, e);
 				}
+
+				String translationURL = translator.pageTranslationURL(longURL, translTo);
+				linksText.append("\n" + (number++) + ": ")
+						.append(translationURL);
 			}
 		}
 		return linksText.toString();

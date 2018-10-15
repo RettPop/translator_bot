@@ -43,6 +43,7 @@ public class BotCommand
 				case "status":
 					command = STATUS;
 					break;
+				case "t": //alias
 				case "translate":
 					command = TRANSLATE;
 					break;

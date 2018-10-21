@@ -30,7 +30,7 @@ public class FileCountersManager implements CountersManager
 	private final String _fileName;
 	private final String _countersDir;
 
-	private Map<String, Counter> _counters = new ConcurrentHashMap<>();
+	private Map<String, Counter> _counters;
 
 
 	public FileCountersManager(String countersFile, String countersDir)

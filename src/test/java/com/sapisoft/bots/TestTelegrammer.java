@@ -1,13 +1,18 @@
 package com.sapisoft.bots;
 
 import com.sapisoft.stats.FileCountersManager;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.contrib.java.lang.system.EnvironmentVariables;
 
 import static com.sapisoft.bots.BotCommand.Commands.*;
 import static org.fest.assertions.api.Assertions.assertThat;
 
 public class TestTelegrammer
 {
+	@Rule
+	public final EnvironmentVariables envVars = new EnvironmentVariables();
+
 	@Test
 	public void testShouldReturnFullTranslateToCommand() throws Exception
 	{
@@ -72,9 +77,9 @@ public class TestTelegrammer
 	public void testShouldReadCountersFileAndDirFromSystemProperty()
 	{
 		String countersFile = "/var/transbot/counters.json";
-		System.setProperty(Telegrammer.CONFIG_COUNTERS_FILE, countersFile);
+		System.setProperty(Telegrammer.SYS_PROPERTY_COUNTERS_FILE, countersFile);
 		String countersDir = "/var/transbot/counters/";
-		System.setProperty(Telegrammer.CONFIG_COUNTERS_DIR, countersDir);
+		System.setProperty(Telegrammer.SYS_PROPERTY_COUNTERS_DIR, countersDir);
 		Telegrammer telegrammer = new Telegrammer();
 		if(telegrammer.getCountsManager() instanceof FileCountersManager)
 		{
@@ -84,5 +89,23 @@ public class TestTelegrammer
 			assertThat(countersManager.getCountersFileName())
 					.isEqualTo(countersFile);
 		}
+	}
+
+	@Test
+	public void testShouldReadConfigAndSecretsFromSystemProperty()
+	{
+		Telegrammer telegrammer = new Telegrammer();
+		String option = telegrammer.getFirstNotNullProperty("envVar", "sysProperty", "def");
+		assertThat(option).isEqualTo("def");
+
+		System.setProperty("sysProperty", "sysPropValue");
+		option = telegrammer.getFirstNotNullProperty("envVar", "sysProperty", "def");
+		assertThat(option).
+				isEqualTo("sysPropValue");
+
+		envVars.set("envVar", "someVarVal");
+		option = telegrammer.getFirstNotNullProperty("envVar", "sysProperty", "def");
+		assertThat(option).
+				isEqualTo("someVarVal");
 	}
 }

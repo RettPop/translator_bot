@@ -50,6 +50,7 @@ dependencies {
     compile group: 'ch.qos.logback', name: 'logback-core', version: 'latest.release'
     compile 'org.easytesting:fest-assert-core:2.0M5'
     testCompile group: 'junit', name: 'junit', version: 'latest.release'
+    testCompile group: 'com.github.stefanbirkner', name: 'system-rules', version: 'latest.release'
     compile 'com.google.code.gson:gson:latest.release'
     compile group: 'org.apache.commons', name: 'commons-lang3', version: 'latest.release'
 }

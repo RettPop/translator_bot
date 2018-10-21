@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -34,11 +36,10 @@ public class FileConfigManager implements ConfigManager
 
 	private JsonObject readConfig(String fileName) throws FileNotFoundException
 	{
-		InputStream in = getClass().getResourceAsStream(fileName);
-		if(null == in)
-		{
-			in = new FileInputStream(new File(fileName));
-		}
+		InputStream in = Files.exists(FileSystems.getDefault().getPath(fileName)) ?
+				new FileInputStream(new File(fileName))
+				: getClass().getResourceAsStream(fileName);
+
 		JsonParser parser = new JsonParser();
 		JsonObject obj = parser.parse(new BufferedReader(new InputStreamReader(in))).getAsJsonObject();
 

@@ -1,9 +1,12 @@
 package com.sapisoft.bots;
 
 import com.sapisoft.azuretranslator.AzureTranslator;
+import com.sapisoft.config.ConfigManager;
 import com.sapisoft.config.FileConfigManager;
 import com.sapisoft.googletranslator.GoogleTranslator;
 import com.sapisoft.secrets.ResourcesSecretsManager;
+import com.sapisoft.secrets.Secret;
+import com.sapisoft.secrets.SecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.stats.Counter;
 import com.sapisoft.stats.FileCountersManager;
@@ -45,14 +48,19 @@ public class Telegrammer extends TelegramLongPollingBot
 	public static final String PERIOD_MONTH = "month";
 	public static final String PERIOD_WEEK = "week";
 	public static final String PERIOD_DAY = "day";
-	public static final String CONFIG_COUNTERS_FILE = "countersFile";
-	public static final String CONFIG_COUNTERS_DIR = "countersDir";
+	private static final String DEFAULT_CONFIG_FILE = "/config/config.json";
+	private static final String DEFAULT_SECRETS_FILE = "/secrets/keys.json";
+	private static final String DEFAULT_ROUTINGS_FILE = "/config/routings.json";
+	private static final String SYS_PROPERTY_CONFIG_FILE = "configFile";
+	private static final String SYS_PROPERTY_SECRETS_FILE = "secretsFile";
+	public static final String SYS_PROPERTY_COUNTERS_FILE = "countersFile";
+	public static final String SYS_PROPERTY_COUNTERS_DIR = "countersDir";
 
 	private String _apiKey;
 	private String _botName;
 	private final Translator _transl = new AzureTranslator();
-	private final FileConfigManager _confManager = new FileConfigManager("/config/config.json");
-	private final ResourcesSecretsManager _secretsManager = new ResourcesSecretsManager("/secrets/keys.json");
+	private final FileConfigManager _confManager;
+	private final ResourcesSecretsManager _secretsManager;
 	private Map<Long, List<TranslationCommand>> _routing;
 
 	private final FileCountersManager _countsManager;
@@ -66,12 +74,18 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		_routing = getRoutings();
 
-		// read system properties before. If null, read from config
-		String countersFile = Optional.ofNullable(System.getProperty(CONFIG_COUNTERS_FILE))
-				.orElse(_confManager.getOption(CONFIG_COUNTERS_FILE, "statistics"));
+		String configFile = getFirstNotNullProperty("TRANSLATOR_CONFIG_FILE", SYS_PROPERTY_CONFIG_FILE, DEFAULT_CONFIG_FILE);
+		_confManager = new FileConfigManager(configFile);
 
-		String countersDir = Optional.ofNullable(System.getProperty(CONFIG_COUNTERS_DIR))
-				.orElse(_confManager.getOption(CONFIG_COUNTERS_DIR, "statistics"));
+		String secretsFile = getFirstNotNullProperty("TRANSLATOR_SECRETS_FILE", SYS_PROPERTY_SECRETS_FILE, DEFAULT_SECRETS_FILE);
+		_secretsManager = new ResourcesSecretsManager(secretsFile);
+
+		// read system properties before. If null, read from config
+		String countersFile = Optional.ofNullable(System.getProperty(SYS_PROPERTY_COUNTERS_FILE))
+				.orElse(_confManager.getOption(SYS_PROPERTY_COUNTERS_FILE, "statistics"));
+
+		String countersDir = Optional.ofNullable(System.getProperty(SYS_PROPERTY_COUNTERS_DIR))
+				.orElse(_confManager.getOption(SYS_PROPERTY_COUNTERS_DIR, "statistics"));
 
 		_countsManager = new FileCountersManager(countersFile, countersDir);
 
@@ -80,7 +94,9 @@ public class Telegrammer extends TelegramLongPollingBot
 
 	private Map<Long, List<TranslationCommand>> getRoutings()
 	{
-		FileConfigManager routingsCfg = new FileConfigManager("/config/routings.json");
+		String routingsFile = getFirstNotNullProperty("TRANSLATOR_ROUTINGS_FILE", "routingsFile", DEFAULT_ROUTINGS_FILE);
+		FileConfigManager routingsCfg = new FileConfigManager(routingsFile);
+
 		List<String> sections = routingsCfg.getSections();
 		HashMap<Long, ArrayList<TranslationCommand>> routingsArray = new HashMap<>();
 
@@ -117,6 +133,20 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 
 		return routings;
+	}
+
+	String getFirstNotNullProperty(String envVar, String systemProperty, String defaultValue)
+	{
+		String propertyVal = System.getenv(envVar);
+		if (null == propertyVal)
+		{
+			propertyVal = System.getProperty(systemProperty);
+			if (null == propertyVal)
+			{
+				propertyVal = defaultValue;
+			}
+		}
+		return propertyVal;
 	}
 
 	public static void main(String[] args)
@@ -207,13 +237,13 @@ public class Telegrammer extends TelegramLongPollingBot
 
 	private void processChatMessage(Update update)
 	{
-		List<TranslationCommand> translationCommands = translationCommandsForChat(update.getChannelPost().getChat());
+		List<TranslationCommand> commands = translationCommandsForChat(update.getChannelPost().getChat());
 
 		Message msg = update.getChannelPost();
 		User usr = update.getChannelPost().getFrom();
 		Chat sourceChat = update.getChannelPost().getChat();
 
-		if (translationCommands == null)
+		if (commands == null)
 		{
 			LOG.info("No commands for source chat: {}", sourceChat.getTitle());
 			return;
@@ -221,7 +251,7 @@ public class Telegrammer extends TelegramLongPollingBot
 
 		LOG.info("Message arrived from channel: {} : {} from user {}", sourceChat.getId(), sourceChat.getTitle(), usr);
 
-		for (TranslationCommand oneCommand : translationCommands)
+		for (TranslationCommand oneCommand : commands)
 		{
 			SendMessage message = new SendMessage()
 					.setChatId(sourceChat.getId())
@@ -285,7 +315,8 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 
 		String commandText = updateMessage.getText();
-		BotCommand botCommand = null;
+		// by default, let's translate everything
+		BotCommand botCommand = BotCommand.CreateCommand(TRANSLATE);
 
 		if(updateMessage.hasEntities())
 		{
@@ -317,7 +348,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		{
 			case HELP:
 			{
-				String response = "Probably useless for you bot as it works with hardcoded channels as for now. But if you are inderested in what does it do anyway, it receives messages from one channel, translates them (with Microsoft Locale API) and sends to another one.";
+				String response = "Probably useless for you bot as it works with hardcoded channels as for now. But if you are interested in what does it do anyway, it receives messages from one channel, translates them (with Microsoft Translation API) and sends to another channel.";
 				sendTextToChat(response, updateMessage.getChatId());
 				break;
 			}
@@ -786,6 +817,18 @@ public class Telegrammer extends TelegramLongPollingBot
 	FileCountersManager getCountsManager()
 	{
 		return _countsManager;
+	}
+
+	@VisibleForTesting
+	ConfigManager getConfigManager()
+	{
+		return _confManager;
+	}
+
+	@VisibleForTesting
+	SecretsManager getSecretsManager()
+	{
+		return _secretsManager;
 	}
 
 }

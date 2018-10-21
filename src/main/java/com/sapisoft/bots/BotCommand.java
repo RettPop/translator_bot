@@ -40,6 +40,7 @@ public class BotCommand
 				case "help":
 					command = HELP;
 					break;
+				case "s":
 				case "status":
 					command = STATUS;
 					break;
@@ -53,12 +54,15 @@ public class BotCommand
 				case "translate_from_to":
 					command = TRANSLATE_FROM_TO;
 					break;
+				case "c":
 				case "counters":
 					command = COUNTERS;
 					break;
+				case "cd":
 				case "counterdelta":
 					command = COUNTERDELTA;
 					break;
+				case "l":
 				case "languages":
 					command = LANGUAGES;
 					break;

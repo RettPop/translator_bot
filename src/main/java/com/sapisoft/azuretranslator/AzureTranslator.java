@@ -1,5 +1,9 @@
 package com.sapisoft.azuretranslator;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sapisoft.secrets.ResourcesSecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.translator.Translation;
@@ -16,30 +20,18 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.xpath.*;
 import java.io.IOException;
-import java.io.StringReader;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
-import static javax.ws.rs.core.MediaType.APPLICATION_XML;
-import static javax.ws.rs.core.MediaType.TEXT_XML;
-import static org.apache.http.HttpHeaders.ACCEPT;
+import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.apache.http.HttpHeaders.AUTHORIZATION;
 import static org.apache.http.protocol.HTTP.CONTENT_TYPE;
 
@@ -51,44 +43,44 @@ public class AzureTranslator implements Translator
 	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
 
     private static final String SECRETS_GROUP = "com.sapisoft.azuretranslator";
-	private static final long SUPPORTED_LANGUAGES_UPDATE_PERIOD_MILLIS = TimeUnit.HOURS.toMillis(24); // 24 hours
-	private static final String SITETRANSLATOR_MICROSOFTTRANSLATOR = "https://www.microsofttranslator.com/bv.aspx"; //from=&to=en&a=";
+	private static final Duration SUPPORTED_LANGUAGES_UPDATE_DURATION = Duration.ofHours(24);
+	private static final String SITETRANSLATOR_MICROSOFTTRANSLATOR = "https://www.microsofttranslator.com/bv.aspx";
+	private static final String TRANSLATE_SERVICE_BASE_URL = "https://api.cognitive.microsofttranslator.com/";
 
 	private String _subscription;
     private List<Locale> _supportedLaguages;
-    private long _lastSupportedLanguagesFetchTime;
+    private Instant _lastSupportedLanguagesFetchTime;
 
     @Override
     public List<Locale> supportedLanguages()
     {
-	    String token = new Authorizator().GetAuthToken(getSubscription());
-	    LOG.debug("Token received: {}*", token.substring(1, 5));
+//	    String token = new Authorizator().GetAuthToken(getSubscription());
+//	    LOG.debug("Token received: {}*", token.substring(1, 5));
 
-	    if(_supportedLaguages != null && (System.currentTimeMillis() - _lastSupportedLanguagesFetchTime) < SUPPORTED_LANGUAGES_UPDATE_PERIOD_MILLIS)
+	    if(_supportedLaguages != null &&
+			    (Duration.between(Instant.now(), _lastSupportedLanguagesFetchTime)
+					    .compareTo(SUPPORTED_LANGUAGES_UPDATE_DURATION) > 0))
 	    {
 	    	return _supportedLaguages;
 	    }
 
-		List<Locale> languages = null;
+	    List<Locale> languages = null;
 
-		if(token != null)
+	    try
 	    {
-		    try
+		    languages = sendLanguagesToTranslateRequest();
+		    if(languages != null && !languages.isEmpty())
 		    {
-			    languages = sendLanguagesToTranslateRequest(token);
-			    if(languages != null && !languages.isEmpty())
-			    {
-				    _supportedLaguages = sendLanguagesNamesRequest(token, languages);
-				    _lastSupportedLanguagesFetchTime = System.currentTimeMillis();
-			    }
-		    }
-		    catch (URISyntaxException | IOException e)
-		    {
-			    LOG.debug("Error requesting languages list: ", e);
+			    _supportedLaguages = languages;
+			    _lastSupportedLanguagesFetchTime = Instant.now();
 		    }
 	    }
+	    catch (URISyntaxException | IOException e)
+	    {
+		    LOG.debug("Error requesting languages list: ", e);
+	    }
 
-	    return languages;
+	    return _supportedLaguages;
     }
 
     @Override
@@ -102,23 +94,20 @@ public class AzureTranslator implements Translator
     {
         String token = new Authorizator().GetAuthToken(getSubscription());
         LOG.debug("Token received: {}", token);
-        String translation = message.getSourceText();
+        Translation resultTranslation = message;
         if(token != null)
         {
             try
             {
-                translation = sendTranslationRequest(message, token);
+                resultTranslation = sendTranslationRequest(message, token);
             }
-            catch (URISyntaxException | IOException e)
+            catch (Exception e)
             {
                 LOG.debug("Error translating: ", e);
             }
         }
 
-        return Translation.getBuilder()
-                .from(message)
-                .resultText(translation)
-                .build();
+        return resultTranslation;
     }
 
 	@Override
@@ -151,191 +140,129 @@ public class AzureTranslator implements Translator
         return _subscription;
     }
 
-	private String sendTranslationRequest(Translation sourceMessage, String token) throws URISyntaxException, IOException
-	{
-		URIBuilder builder = new URIBuilder("https://api.microsofttranslator.com/V2/Http.svc/Translate");
-		Locale sourceLocale = Locale.forLanguageTag(sourceMessage.getSourceLocale() == null ? "" : sourceMessage.getSourceLocale().getLanguage());
-		Locale destLocale = Locale.forLanguageTag(sourceMessage.getDestinationLocale() == null ? "en" : sourceMessage.getDestinationLocale().getLanguage());
+	public static class RequestBody {
+		String Text;
 
-		builder.addParameter("text", sourceMessage.getSourceText());
-		builder.addParameter("from", sourceLocale.getLanguage());
-		builder.addParameter("to", destLocale.getLanguage());
-		builder.addParameter("contentType", "text/plain");
-		builder.addParameter("Accept", "text/plain");
-		URI uri = builder.build();
-
-		HttpGet request = new HttpGet(uri);
-		request.setHeader("Authorization", "Bearer " + token);
-
-		HttpClient httpClient = HttpClients.createDefault();
-		HttpResponse response = httpClient.execute(request);
-		HttpEntity entity = response.getEntity();
-
-		if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK)
-		{
-			LOG.debug("Received NOK from translation service: {}", response.toString());
-			return null;
+		public RequestBody(String text) {
+			this.Text = text;
 		}
-
-		String result = EntityUtils.toString(entity);
-
-		try
-		{
-			DocumentBuilder docBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-			Document doc = docBuilder.parse(new InputSource(new StringReader(result)));
-			XPath path = XPathFactory.newInstance().newXPath();
-			XPathExpression expr = path.compile("/string");
-			NodeList nodeList = (NodeList) expr.evaluate(doc.getDocumentElement(), XPathConstants.NODESET);
-			for (int idx = 0; idx < nodeList.getLength(); idx++)
-			{
-				Node node = nodeList.item(idx);
-				if("string".equals(node.getNodeName()))
-				{
-					return node.getTextContent();
-				}
-			}
-		}
-		catch (XPathExpressionException | SAXException | ParserConfigurationException e)
-		{
-			LOG.debug("Error parsing translation engine answer: ", e);
-		}
-
-		return null;
 	}
 
-	private List<Locale> sendLanguagesToTranslateRequest(String token) throws URISyntaxException, IOException
+	private Translation sendTranslationRequest(Translation sourceMessage, String token) throws URISyntaxException, IOException
 	{
-		URIBuilder builder = new URIBuilder("https://api.microsofttranslator.com/v2/http.svc/GetLanguagesForTranslate");
-		builder.addParameter(ACCEPT, APPLICATION_XML);
-		URI uri = builder.build();
+		URIBuilder uriBuilder = new URIBuilder(TRANSLATE_SERVICE_BASE_URL + "translate");
 
-		HttpGet request = new HttpGet(uri);
+		Locale reqSourceLocale = Locale.forLanguageTag(sourceMessage.getSourceLocale() == null ? "" :
+				sourceMessage.getSourceLocale().getLanguage());
+		Locale reqDestLocale = Locale.forLanguageTag(sourceMessage.getDestinationLocale() == null ? "en" :
+				sourceMessage.getDestinationLocale().getLanguage());
+
+		uriBuilder.addParameter("api-version", "3.0");
+		uriBuilder.addParameter("from", reqSourceLocale.getLanguage());
+		uriBuilder.addParameter("to", reqDestLocale.getLanguage());
+		URI serviceUri = uriBuilder.build();
+
+		List<RequestBody> objList = new ArrayList<>();
+		objList.add(new RequestBody(sourceMessage.getSourceText()));
+		String content = new Gson().toJson(objList);
+
+		HttpPost request = new HttpPost(serviceUri);
+		request.setHeader(CONTENT_TYPE, APPLICATION_JSON);
 		request.setHeader(AUTHORIZATION, "Bearer " + token);
-		request.setHeader(CONTENT_TYPE, TEXT_XML);
+		request.setHeader("X-ClientTraceId", java.util.UUID.randomUUID().toString());
+		// set request body with source text
+		HttpEntity entity = new ByteArrayEntity(content.getBytes("UTF-8"));
+		request.setEntity(entity);
+
+		// sending request
+		HttpClient client = HttpClients.createDefault();
+		HttpResponse response = client.execute(request);
+
+		LOG.debug("Received translation response: {}", response.toString());
+
+		// parsing response
+		String respEntity = EntityUtils.toString(response.getEntity());
+		LOG.debug("Translation response body: {}", respEntity);
+		JsonObject respJsonBody = new JsonParser().parse(respEntity)
+				.getAsJsonArray()
+				.get(0)
+				.getAsJsonObject();
+
+		JsonObject respTranslation = respJsonBody.getAsJsonArray("translations")
+				.get(0)
+				.getAsJsonObject();
+
+		String respResultText = respTranslation.get("text").getAsString();
+		Locale respDestLocale = Locale.forLanguageTag(respTranslation.get("to").getAsString());
+
+		Locale respSrcLocale = reqSourceLocale;
+		// trying to get retreive source locale from the response
+		JsonObject respDetects = respJsonBody.getAsJsonObject("detectedLanguage");
+		if( respDetects != null )
+		{
+			respSrcLocale = Locale.forLanguageTag(respDetects.get("language").getAsString());
+		}
+
+		Translation resultTranslation = Translation.FullTranslation(respSrcLocale,
+				respDestLocale,
+				sourceMessage.getSourceText(),
+				respResultText);
+
+		return resultTranslation;
+	}
+
+	private List<Locale> sendLanguagesToTranslateRequest() throws URISyntaxException, IOException
+	{
+		URIBuilder uriBuilder = new URIBuilder("https://api.cognitive.microsofttranslator.com/languages?api-version=3.0");
+		uriBuilder.addParameter("scope", "translation");
+		URI serviceUri = uriBuilder.build();
+
+		HttpGet request = new HttpGet(serviceUri);
+		request.setHeader(CONTENT_TYPE, APPLICATION_JSON);
 
 		HttpClient httpClient = HttpClients.createDefault();
 		HttpResponse response = httpClient.execute(request);
-		HttpEntity entity = response.getEntity();
+
+		List<Locale> languages = null;
 
 		if(response.getStatusLine().getStatusCode() == HttpStatus.SC_OK)
 		{
-			String result = EntityUtils.toString(entity);
-			LOG.debug("Received response: {}", result);
-
+			HttpEntity entity = response.getEntity();
+			String responseBody = EntityUtils.toString(entity);
+			LOG.debug("Received response: {}", responseBody);
+			languages = new ArrayList<>();
 			try
 			{
-				DocumentBuilder docBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-				Document doc = docBuilder.parse(new InputSource(new StringReader(result)));
-				XPath path = XPathFactory.newInstance().newXPath();
-				XPathExpression expr = path.compile("string");
-				NodeList nodeList = (NodeList) expr.evaluate(doc.getDocumentElement(), XPathConstants.NODESET);
-				List<Locale> languages = new ArrayList<>();
-				for (int idx = 0; idx < nodeList.getLength(); idx++)
-				{
-					Node node = nodeList.item(idx);
-					if("string".equals(node.getNodeName()))
-					{
-						languages.add(Locale.forLanguageTag(node.getTextContent()));
-					}
-				}
+				JsonObject translations = new JsonParser().parse(responseBody)
+						.getAsJsonObject()
+						.getAsJsonObject("translation");
 
-				return languages;
+				for(Map.Entry<String, JsonElement> oneTranslation : translations.entrySet())
+				{
+					String langCode = oneTranslation.getKey();
+					String langName = oneTranslation.getValue().getAsJsonObject().get("name").getAsString();
+					Locale locale = new Locale(langName, langCode, langCode);
+					languages.add(locale);
+				}
 			}
-			catch (XPathExpressionException | SAXException | ParserConfigurationException e)
+			catch (Exception e)
 			{
-				LOG.debug("Error parsing translation engine answer: ", e);
+				LOG.error("Error parsing translation engine answer: ", e);
 			}
 		}
 
-		return null;
+		return languages;
 	}
 
-    private List<Locale> sendLanguagesNamesRequest(String token, List<Locale> locales) throws URISyntaxException, IOException
-    {
-	    URIBuilder builder = new URIBuilder("https://api.microsofttranslator.com/V2/Http.svc/GetLanguageNames?");
-        builder.addParameter("contentType", "text/xml");
-        builder.addParameter("Accept", "text/text");
-	    builder.addParameter("locale", "en-US");
-        URI uri = builder.build();
-
-        HttpPost request = new HttpPost(uri);
-        request.setHeader("Authorization", "Bearer " + token);
-	    request.setHeader("Content-Type", "text/xml");
-        StringBuilder xml = new StringBuilder("<ArrayOfstring xmlns=\"http://schemas.microsoft.com/2003/10/Serialization/Arrays\" xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" name=\"languageCodes\">\n");
-	    for (Locale oneLocale : locales)
-	    {
-			xml.append("<string>")
-					.append(oneLocale.getLanguage())
-					.append("</string>");
-	    }
-	    xml.append("</ArrayOfstring>");
-
-        HttpEntity postEntity = new ByteArrayEntity(xml.toString().getBytes("UTF-8"));
-        request.setEntity(postEntity);
-//        request.setHeader("locale" ,"en-US");
-//	    request.setHeader("localeCode" ,"en");
-
-        HttpClient httpClient = HttpClients.createDefault();
-        HttpResponse response = httpClient.execute(request);
-        HttpEntity entity = response.getEntity();
-
-        if(response.getStatusLine().getStatusCode() == HttpStatus.SC_OK)
-        {
-            String result = EntityUtils.toString(entity);
-            LOG.debug("Received response: {}", result);
-
-            try
-            {
-            	// parsing languages names from the response
-                DocumentBuilder docBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-                Document doc = docBuilder.parse(new InputSource(new StringReader(result)));
-                XPath path = XPathFactory.newInstance().newXPath();
-                XPathExpression expr = path.compile("string");
-                NodeList nodeList = (NodeList) expr.evaluate(doc.getDocumentElement(), XPathConstants.NODESET);
-                List<String> names = new ArrayList<>();
-                for (int idx = 0; idx < nodeList.getLength(); idx++)
-                {
-                    Node node = nodeList.item(idx);
-                    if("string".equals(node.getNodeName()))
-                    {
-                    	String languageName = node.getTextContent();
-                    	names.add(languageName);
-                    }
-                }
-
-                List<Locale> languagesWithNames = new ArrayList<>();
-
-                // if by some reason we have received not synchronized list of names, return original locales list as is
-                if(names.size() != locales.size())
-                {
-                	return locales;
-                }
-
-	            for (int idx = 0; idx < locales.size(); idx++)
-	            {
-	            	Locale namedLocale = new Locale(locales.get(idx).getLanguage(), "", names.get(idx));
-					languagesWithNames.add(namedLocale);
-	            }
-
-                return languagesWithNames;
-            }
-            catch (XPathExpressionException | SAXException | ParserConfigurationException e)
-            {
-            	LOG.debug("Error parsing translation engine answer: ", e);
-            }
-        }
-
-        return null;
-    }
-
-    public static void main(String[] args)
+	public static void main(String[] args)
     {
         AzureTranslator translator = new AzureTranslator();
-//        Translation text = translator.translate(Translation.SimpleTranslation("15:e juni, 2017 Bolotto med snabb inflytt Nytt koncept för dig om vill flytta in snabbt."));
-	    List<Locale> languages = translator.supportedLanguages();
-	    System.out.println(languages.toString());
+        Translation text = translator.translate(Translation.SimpleTranslation("15:e juni, 2017 Bolotto med snabb inflytt Nytt koncept för dig om vill flytta in snabbt."));
+	    System.out.println(text.getResultText());
+//	    List<Locale> languages = translator.supportedLanguages();
+//	    System.out.println(languages.toString());
 
-	    languages = translator.supportedLanguages();
-	    System.out.println(languages.toString());
+//	    languages = translator.supportedLanguages();
+//	    System.out.println(languages.toString());
     }
 }

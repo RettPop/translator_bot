@@ -315,8 +315,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 
 		String commandText = updateMessage.getText();
-		// by default, let's translate everything
-		BotCommand botCommand = BotCommand.CreateCommand(TRANSLATE);
+		BotCommand botCommand = BotCommand.NOPCommand();
 
 		if(updateMessage.hasEntities())
 		{
@@ -367,6 +366,7 @@ public class Telegrammer extends TelegramLongPollingBot
 				executeCommandCounterdelta(command, updateMessage, updateMessage.getFrom());
 				break;
 			}
+			case TRANSLATE:
 			case TRANSLATE_TO:
 			case TRANSLATE_FROM_TO:
 			{

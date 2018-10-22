@@ -203,12 +203,8 @@ public class FileCountersManager implements CountersManager
 		{
 			// read counters list
 			JsonParser parser = new JsonParser();
-			JsonObject obj;
-			synchronized (_counters)
-			{
-				FileReader in = new FileReader(fileName);
-				obj = parser.parse(new BufferedReader(in)).getAsJsonObject();
-			}
+			JsonObject obj = parser.parse(new BufferedReader(new FileReader(fileName)))
+					.getAsJsonObject();
 
 			JsonObject countersBlock = obj.getAsJsonObject(SECTION_COUNTERS);
 			Set<Map.Entry<String, JsonElement>> counters = countersBlock.entrySet();

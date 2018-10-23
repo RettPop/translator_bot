@@ -315,7 +315,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 
 		String commandText = updateMessage.getText();
-		BotCommand botCommand = BotCommand.NOPCommand();
+		BotCommand botCommand = null;
 
 		if(updateMessage.hasEntities())
 		{

@@ -184,7 +184,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		LOG.debug("Update arrived: {}", update);
 		BotCommand command = findCommand(update);
-		if (null != command && (UNKNOWN != command.command()))
+		if (null != command && (NOP != command.command()))
 		{
 			_countsManager.changeCounterValue(COUNTER_COMMANDS_TOTAL, 1);
 			Message message = update.hasMessage() ? update.getMessage() : update.getChannelPost();

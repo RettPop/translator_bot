@@ -70,14 +70,27 @@ public class Telegrammer extends TelegramLongPollingBot
 	private final Counter COUNTER_TRANSL_ERRORS = Counter.fromString("translations.Error");
 	private final Counter COUNTER_COMMANDS_TOTAL = Counter.fromString("telegrammer.Commands");
 
+	static
+	{
+		String logDir = getFirstNotNullProperty("LOG_DIR", "logDir", null);
+		if(null != logDir)
+		{
+			System.setProperty("log.name", logDir);
+		}
+	}
+
 	public Telegrammer()
 	{
 		_routing = getRoutings();
 
-		String configFile = getFirstNotNullProperty("TRANSLATOR_CONFIG_FILE", SYS_PROPERTY_CONFIG_FILE, DEFAULT_CONFIG_FILE);
+		String configFile = getFirstNotNullProperty("TRANSLATOR_CONFIG_FILE",
+				SYS_PROPERTY_CONFIG_FILE,
+				DEFAULT_CONFIG_FILE);
 		_confManager = new FileConfigManager(configFile);
 
-		String secretsFile = getFirstNotNullProperty("TRANSLATOR_SECRETS_FILE", SYS_PROPERTY_SECRETS_FILE, DEFAULT_SECRETS_FILE);
+		String secretsFile = getFirstNotNullProperty("TRANSLATOR_SECRETS_FILE",
+				SYS_PROPERTY_SECRETS_FILE,
+				DEFAULT_SECRETS_FILE);
 		_secretsManager = new ResourcesSecretsManager(secretsFile);
 
 		// read system properties before. If null, read from config
@@ -90,6 +103,9 @@ public class Telegrammer extends TelegramLongPollingBot
 		_countsManager = new FileCountersManager(countersFile, countersDir);
 
 		LOG.info("Starting v.{}", CLASS_VERSION);
+		LOG.debug("Counters file: {}", countersFile);
+		LOG.debug("Counters dir: {}", countersDir);
+		LOG.debug("Routings: {}", _routing);
 	}
 
 	private Map<Long, List<TranslationCommand>> getRoutings()
@@ -135,7 +151,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		return routings;
 	}
 
-	String getFirstNotNullProperty(String envVar, String systemProperty, String defaultValue)
+	public static String getFirstNotNullProperty(String envVar, String systemProperty, String defaultValue)
 	{
 		String propertyVal = System.getenv(envVar);
 		if (null == propertyVal)
@@ -383,7 +399,8 @@ public class Telegrammer extends TelegramLongPollingBot
 			}
 			default:
 			{
-				sendTextToChat("Unknown command", updateMessage.getChatId());
+				sendTextToChat("Unknown command. Trying to translate", updateMessage.getChatId());
+				executeCommand(BotCommand.CreateCommand(TRANSLATE), updateMessage);
 			}
 		}
 	}
@@ -629,11 +646,14 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		ArrayList<String> urls = new ArrayList<>();
 
-		for (MessageEntity oneEntity : updateMessage.getEntities())
+		if(updateMessage.hasEntities())
 		{
-			if("url".equals(oneEntity.getType()))
+			for (MessageEntity oneEntity : updateMessage.getEntities())
 			{
-				urls.add(oneEntity.getText());
+				if("url".equals(oneEntity.getType()))
+				{
+					urls.add(oneEntity.getText());
+				}
 			}
 		}
 

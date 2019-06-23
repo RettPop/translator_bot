@@ -1,7 +1,7 @@
 group 'com.sapisoft.bots'
 
 ext {
-    appVersion = '1.0.16'
+    appVersion = '1.0.17'
 }
 
 version appVersion + '-SNAPSHOT'
@@ -52,5 +52,5 @@ dependencies {
     testCompile group: 'junit', name: 'junit', version: 'latest.release'
     testCompile group: 'com.github.stefanbirkner', name: 'system-rules', version: 'latest.release'
     compile 'com.google.code.gson:gson:latest.release'
-    compile group: 'org.apache.commons', name: 'commons-lang3', version: 'latest.release'
+    compile group: 'org.apache.commons', name: 'commons-text', version: 'latest.release'
 }

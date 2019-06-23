@@ -1,5 +1,6 @@
 package com.sapisoft.azuretranslator;
 
+import com.google.common.net.MediaType;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -31,7 +32,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.apache.http.HttpHeaders.AUTHORIZATION;
 import static org.apache.http.protocol.HTTP.CONTENT_TYPE;
 
@@ -167,7 +167,7 @@ public class AzureTranslator implements Translator
 		String content = new Gson().toJson(objList);
 
 		HttpPost request = new HttpPost(serviceUri);
-		request.setHeader(CONTENT_TYPE, APPLICATION_JSON);
+		request.setHeader(CONTENT_TYPE, MediaType.JSON_UTF_8.toString());
 		request.setHeader(AUTHORIZATION, "Bearer " + token);
 		request.setHeader("X-ClientTraceId", java.util.UUID.randomUUID().toString());
 		// set request body with source text
@@ -218,7 +218,7 @@ public class AzureTranslator implements Translator
 		URI serviceUri = uriBuilder.build();
 
 		HttpGet request = new HttpGet(serviceUri);
-		request.setHeader(CONTENT_TYPE, APPLICATION_JSON);
+		request.setHeader(CONTENT_TYPE, MediaType.JSON_UTF_8.toString());
 
 		HttpClient httpClient = HttpClients.createDefault();
 		HttpResponse response = httpClient.execute(request);

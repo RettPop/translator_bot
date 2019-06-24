@@ -650,9 +650,14 @@ public class Telegrammer extends TelegramLongPollingBot
 		{
 			for (MessageEntity oneEntity : updateMessage.getEntities())
 			{
-				if("url".equals(oneEntity.getType()))
+				String entityType = oneEntity.getType();
+				if("url".equals(entityType))
 				{
 					urls.add(oneEntity.getText());
+				}
+				else if("text_link".equals(entityType))
+				{
+					urls.add(oneEntity.getUrl());
 				}
 			}
 		}

@@ -19,46 +19,51 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
+import java.time.Instant;
 
 class Authorizator
 {
     private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
 
-    private static final int TOKEN_VALIDITY_PERIOD_MS = 10000;
+    private static final Duration TOKEN_VALIDITY_DURATION = Duration.ofSeconds(10);
 
 	private String _authToken;
-	private long lastTokenRequest;
+	private Instant lastTokenRequest;
 
     String GetAuthToken(String subscription)
     {
         // kinda cache
-        if(System.currentTimeMillis() - lastTokenRequest < TOKEN_VALIDITY_PERIOD_MS && _authToken != null)
+        if(_authToken != null && Instant.now().toEpochMilli() - lastTokenRequest.toEpochMilli() < TOKEN_VALIDITY_DURATION.toMillis())
         {
             return _authToken;
         }
 
-        HttpClient httpClient = HttpClients.createDefault();
-
-        try
+        synchronized(this)
         {
-            URIBuilder builder = new URIBuilder("https://api.cognitive.microsoft.com/sts/v1.0/issueToken");
-            URI uri = builder.build();
-            HttpPost request = new HttpPost(uri);
-            request.setHeader("Ocp-Apim-Subscription-Key", subscription);
+            HttpClient httpClient = HttpClients.createDefault();
 
-            HttpResponse response = httpClient.execute(request);
-            HttpEntity entity = response.getEntity();
-
-            if(response.getStatusLine().getStatusCode() == HttpStatus.SC_OK)
+            try
             {
-                lastTokenRequest = System.currentTimeMillis();
-                _authToken = EntityUtils.toString(entity);
-                return _authToken;
+                URIBuilder builder = new URIBuilder("https://api.cognitive.microsoft.com/sts/v1.0/issueToken");
+                URI uri = builder.build();
+                HttpPost request = new HttpPost(uri);
+                request.setHeader("Ocp-Apim-Subscription-Key", subscription);
+
+                HttpResponse response = httpClient.execute(request);
+                HttpEntity entity = response.getEntity();
+
+                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK)
+                {
+                    lastTokenRequest = Instant.now();
+                    _authToken = EntityUtils.toString(entity);
+                    return _authToken;
+                }
             }
-        }
-        catch (URISyntaxException | IOException e)
-        {
-            LOG.error("Error requesting authorization token", e);
+            catch (URISyntaxException | IOException e)
+            {
+                LOG.error("Error requesting authorization token", e);
+            }
         }
 
         return null;

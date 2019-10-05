@@ -16,7 +16,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class FileCountersManager implements CountersManager
 {
-	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
+	private static final Logger LOG = LoggerFactory.getLogger(new Object()
+	{
+	}.getClass().getEnclosingClass());
 	public static final String PROPERTY_UPDATED = "updated";
 	public static final String PROPERTY_OLD_VALUE = "oldValue";
 	public static final String PROPERTY_VALUE = "value";
@@ -38,7 +40,7 @@ public class FileCountersManager implements CountersManager
 		_fileName = countersFile;
 		_countersDir = countersDir;
 
-		_counters = readCounters(_fileName);
+		_counters = new ConcurrentHashMap(readCounters(_fileName));
 	}
 
 	@Override
@@ -58,14 +60,17 @@ public class FileCountersManager implements CountersManager
 		}
 		else
 		{
-			Float maxValue = newCounter.getCounterValue() > newValue ? newCounter.getCounterValue() : newValue;
+			synchronized (newCounter)
+			{
+				Float maxValue = newCounter.getCounterValue() > newValue ? newCounter.getCounterValue() : newValue;
 
-			newCounter = Counter.builder(newCounter)
-					.setOldValue(newCounter.getCounterValue())
-					.setCounterValue(newValue)
-					.setUpdated(new Date())
-					.setMaxValue(maxValue)
-					.build();
+				newCounter = Counter.builder(newCounter)
+						.setOldValue(newCounter.getCounterValue())
+						.setCounterValue(newValue)
+						.setUpdated(new Date())
+						.setMaxValue(maxValue)
+						.build();
+			}
 		}
 		_counters.put(counter.name(), newCounter);
 
@@ -80,7 +85,7 @@ public class FileCountersManager implements CountersManager
 		{
 			String counterFileName = Paths.get(_countersDir, COUNTER_FILE_PREFIX + counter.name().hashCode()).toAbsolutePath().toString();
 
-			try (Writer writer = new FileWriter(counterFileName , true))
+			try (Writer writer = new FileWriter(counterFileName, true))
 			{
 				StringBuilder str = new StringBuilder(StringEscapeUtils.escapeCsv(counter.name()));
 				str.append(CSV_SEPARATOR).append(counter.getOldValue());
@@ -101,7 +106,7 @@ public class FileCountersManager implements CountersManager
 	public Float changeCounterValue(Counter counterId, float valueDelta)
 	{
 		Counter oldCounter = _counters.get(counterId.name());
-		if(oldCounter == null)
+		if (oldCounter == null)
 		{
 			return setCounterValue(counterId, valueDelta);
 		}
@@ -116,7 +121,7 @@ public class FileCountersManager implements CountersManager
 	public Float getCounterValue(Counter existingCounter)
 	{
 		Counter counter = _counters.get(existingCounter.name());
-		if(null == counter)
+		if (null == counter)
 		{
 			return Float.NaN;
 		}
@@ -136,7 +141,7 @@ public class FileCountersManager implements CountersManager
 	{
 		ArrayList<Counter> states = new ArrayList<>();
 		readCounterFromCSV(counter.name(), state -> {
-			if(state.getUpdated().compareTo(startDate) >= 0 && state.getUpdated().compareTo(lastDate) <= 0)
+			if (state.getUpdated().compareTo(startDate) >= 0 && state.getUpdated().compareTo(lastDate) <= 0)
 			{
 				states.add(state);
 			}
@@ -163,7 +168,7 @@ public class FileCountersManager implements CountersManager
 		Counter counter = null;
 		for (String key : _counters.keySet())
 		{
-			if(key.hashCode() == id)
+			if (key.hashCode() == id)
 			{
 				counter = _counters.get(key);
 			}
@@ -176,7 +181,7 @@ public class FileCountersManager implements CountersManager
 	{
 		List<String> counters = new ArrayList<>();
 
-		for (Map.Entry<String, Counter> oneEntry: _counters.entrySet())
+		for (Map.Entry<String, Counter> oneEntry : _counters.entrySet())
 		{
 			StringBuilder str = new StringBuilder("Counters:\n");
 			Counter oneCounter = oneEntry.getValue();
@@ -237,7 +242,7 @@ public class FileCountersManager implements CountersManager
 			LOG.error("Error reading counters file: ", e);
 		}
 
-		return  countersMap;
+		return countersMap;
 	}
 
 	interface CounterStateProcess
@@ -248,7 +253,7 @@ public class FileCountersManager implements CountersManager
 	private Counter readCounterFromCSV(String counterName, CounterStateProcess stateCallback)
 	{
 		String counterFileName = Paths.get(_countersDir, COUNTER_FILE_PREFIX + counterName.hashCode()).toAbsolutePath().toString();
-		try (BufferedReader reader = Files.newBufferedReader(Paths.get(counterFileName),StandardCharsets.UTF_8))
+		try (BufferedReader reader = Files.newBufferedReader(Paths.get(counterFileName), StandardCharsets.UTF_8))
 		{
 			// reading CSV file line by line until last record
 			String currentLine = reader.readLine();
@@ -259,11 +264,11 @@ public class FileCountersManager implements CountersManager
 				lastLine = currentLine;
 				currentLine = reader.readLine();
 				// parse counter state either if we have callback or it was last line in the file
-				if(null != stateCallback || currentLine == null)
+				if (null != stateCallback || currentLine == null)
 				{
 					String[] columns = lastLine.split(CSV_SEPARATOR);
 					counterState = getCounterFromColums(counterName, columns);
-					if(null != stateCallback)
+					if (null != stateCallback)
 					{
 						stateCallback.processCounterState(counterState);
 					}
@@ -282,7 +287,7 @@ public class FileCountersManager implements CountersManager
 
 	private Counter getCounterFromColums(String counterName, String[] columns)
 	{
-		if(columns.length < 5)
+		if (columns.length < 5)
 		{
 			return null;
 		}

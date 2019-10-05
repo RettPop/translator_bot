@@ -5,7 +5,6 @@ import com.sapisoft.config.ConfigManager;
 import com.sapisoft.config.FileConfigManager;
 import com.sapisoft.googletranslator.GoogleTranslator;
 import com.sapisoft.secrets.ResourcesSecretsManager;
-import com.sapisoft.secrets.Secret;
 import com.sapisoft.secrets.SecretsManager;
 import com.sapisoft.secrets.SimpleSecret;
 import com.sapisoft.stats.Counter;
@@ -30,6 +29,8 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,8 +41,12 @@ import static com.sapisoft.bots.BotCommand.Commands.*;
  */
 public class Telegrammer extends TelegramLongPollingBot
 {
-	private static final Logger LOG = LoggerFactory.getLogger(new Object(){}.getClass().getEnclosingClass());
-	private static final String CLASS_VERSION = new Object(){}.getClass().getPackage().getImplementationVersion();
+	private static final Logger LOG = LoggerFactory.getLogger(new Object()
+	{
+	}.getClass().getEnclosingClass());
+	private static final String CLASS_VERSION = new Object()
+	{
+	}.getClass().getPackage().getImplementationVersion();
 
 	private static final String SECRETS_GROUP = "com.sapisoft.bots.Translator";
 	private static final String SECRETS_GROUP_TEST = "com.sapisoft.bots.Translator.test";
@@ -69,11 +74,13 @@ public class Telegrammer extends TelegramLongPollingBot
 	private final Counter COUNTER_MSG_LENGTH = Counter.fromString("translations.MessageLength");
 	private final Counter COUNTER_TRANSL_ERRORS = Counter.fromString("translations.Error");
 	private final Counter COUNTER_COMMANDS_TOTAL = Counter.fromString("telegrammer.Commands");
+	private ExecutorService _executor;
+
 
 	static
 	{
 		String logDir = getFirstNotNullProperty("LOG_DIR", "logDir", null);
-		if(null != logDir)
+		if (null != logDir)
 		{
 			System.setProperty("log.name", logDir);
 		}
@@ -101,6 +108,7 @@ public class Telegrammer extends TelegramLongPollingBot
 				.orElse(_confManager.getOption(SYS_PROPERTY_COUNTERS_DIR, "statistics"));
 
 		_countsManager = new FileCountersManager(countersFile, countersDir);
+		_executor = Executors.newCachedThreadPool();
 
 		LOG.info("Starting v.{}", CLASS_VERSION);
 		LOG.debug("Counters file: {}", countersFile);
@@ -123,13 +131,13 @@ public class Telegrammer extends TelegramLongPollingBot
 			String srcLang = routingsCfg.getOption("sourceLocale", oneSection);
 			String dstLang = routingsCfg.getOption("destinationLocale", oneSection);
 			Translation translation = Translation.DestinationTranslation(Locale.forLanguageTag(dstLang), "");
-			if(null != srcLang)
+			if (null != srcLang)
 			{
 				translation = Translation.SourceTranslation(Locale.forLanguageTag(srcLang), Locale.forLanguageTag(dstLang), "");
 			}
 
 			TranslationCommand command = TranslationCommand.createTranslation(targetChatId, translation);
-			if(routingsArray.containsKey(sourceChatId))
+			if (routingsArray.containsKey(sourceChatId))
 			{
 				// already have array or routes. just adding new item
 				routingsArray.get(sourceChatId).add(command);
@@ -182,55 +190,64 @@ public class Telegrammer extends TelegramLongPollingBot
 	@Override
 	public void onUpdateReceived(Update update)
 	{
-		LOG.debug("Update arrived: {}", update);
-		BotCommand command = findCommand(update);
-		if (null != command && (NOP != command.command()))
+		Runnable runner = new Runnable()
 		{
-			_countsManager.changeCounterValue(COUNTER_COMMANDS_TOTAL, 1);
-			Message message = update.hasMessage() ? update.getMessage() : update.getChannelPost();
-			executeCommand(command, message);
-		}
-		else
-		{
-			if(update.hasCallbackQuery())
+			@Override
+			public void run()
 			{
-				processCallback(update);
-			}
-			if (update.hasMessage() && update.getMessage().hasText())
-			{
-				User usr = update.getMessage().getFrom();
-				Chat sourceChat = update.getMessage().getChat();
-				LOG.info("Message arrived from channel: {} from user {}", sourceChat, usr);
+				LOG.debug("Update arrived: {}", update);
+				BotCommand command = findCommand(update);
+				if (null != command && (NOP != command.command()))
+				{
+					_countsManager.changeCounterValue(COUNTER_COMMANDS_TOTAL, 1);
+					Message message = update.hasMessage() ? update.getMessage() : update.getChannelPost();
+					executeCommand(command, message);
+				}
+				else
+				{
+					if (update.hasCallbackQuery())
+					{
+						processCallback(update);
+					}
+					if (update.hasMessage() && update.getMessage().hasText())
+					{
+						User usr = update.getMessage().getFrom();
+						Chat sourceChat = update.getMessage().getChat();
+						LOG.info("Message arrived from channel: {} from user {}", sourceChat, usr);
 
-				processPrivateMessage(update);
-			}
-			else if (update.hasChannelPost())
-			{
-				Message msg = update.getChannelPost();
-				User usr = msg.getFrom();
-				Chat sourceChat = msg.getChat();
-				LOG.info("Message arrived from channel: {} from user {} ", sourceChat, usr);
+						processPrivateMessage(update);
+					}
+					else if (update.hasChannelPost())
+					{
+						Message msg = update.getChannelPost();
+						User usr = msg.getFrom();
+						Chat sourceChat = msg.getChat();
+						LOG.info("Message arrived from channel: {} from user {} ", sourceChat, usr);
 
-				processChatMessage(update);
+						processChatMessage(update);
+					}
+				}
 			}
-		}
+		};
+
+		_executor.execute(runner);
 	}
 
 	private void processCallback(Update update)
 	{
 		CallbackQuery callbackQuery = update.getCallbackQuery();
 		String[] data = callbackQuery.getData().split(":");
-		if(data.length < 3)
+		if (data.length < 3)
 		{
 			executeCommand(BotCommand.CreateCommand(NOTFULL), update.getMessage());
 			return;
 		}
 
-		if(BotCommand.Commands.COUNTERDELTA.toString().compareToIgnoreCase(data[0]) == 0)
+		if (BotCommand.Commands.COUNTERDELTA.toString().compareToIgnoreCase(data[0]) == 0)
 		{
 			Integer counterId = Integer.parseInt(data[1]);
 			Counter counter = _countsManager.getCounterById(counterId);
-			if(counter != null)
+			if (counter != null)
 			{
 				String period = data[2];
 				HashMap<String, String> params = new HashMap<>();
@@ -324,7 +341,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		Message updateMessage = update.hasMessage() ? update.getMessage() : update.getChannelPost();
 
-		if(null == updateMessage)
+		if (null == updateMessage)
 		{
 			LOG.debug("Received empty update");
 			return null;
@@ -333,16 +350,16 @@ public class Telegrammer extends TelegramLongPollingBot
 		String commandText = updateMessage.getText();
 		BotCommand botCommand = null;
 
-		if(updateMessage.hasEntities())
+		if (updateMessage.hasEntities())
 		{
-			for (MessageEntity entity: updateMessage.getEntities())
+			for (MessageEntity entity : updateMessage.getEntities())
 			{
-				if("bot_command".equals(entity.getType()))
+				if ("bot_command".equals(entity.getType()))
 				{
 					botCommand = parseCommand(commandText);
 					LOG.info("Received command {}", entity);
 				}
-				else if("mention".equals(entity.getType()))
+				else if ("mention".equals(entity.getType()))
 				{
 					String strBeforeMent = commandText.substring(0, entity.getOffset());
 					String strAfterMent = commandText.substring(entity.getOffset() + entity.getLength(),
@@ -408,10 +425,10 @@ public class Telegrammer extends TelegramLongPollingBot
 	private void executeCommandCounterdelta(BotCommand command, Message updateMessage, User user)
 	{
 		List<String> permittedChats = _confManager.getValuesArray("counters.show", "permissions");
-		if(user != null)
+		if (user != null)
 		{
 			Integer userId = user.getId();
-			if(!permittedChats.contains(Integer.toString(userId)))
+			if (!permittedChats.contains(Integer.toString(userId)))
 			{
 				sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
 				return;
@@ -426,7 +443,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		Counter counter = Counter.fromString(command.parameters().get("counter"));
 		counter = _countsManager.getCounter(counter);
 
-		if(null == counter)
+		if (null == counter)
 		{
 			sendTextToChat("Unknown counter", updateMessage.getChatId());
 			return;
@@ -435,7 +452,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		String periodName = command.parameters().get("period");
 		Date lastDate = new Date();
 		Date startDate = lastDate;
-		if(PERIOD_MONTH.equals(periodName))
+		if (PERIOD_MONTH.equals(periodName))
 		{
 			startDate = Date.from(LocalDate.now()
 					.atStartOfDay()
@@ -443,14 +460,14 @@ public class Telegrammer extends TelegramLongPollingBot
 					.atZone(ZoneId.systemDefault())
 					.toInstant());
 		}
-		else if(PERIOD_DAY.equals(periodName))
+		else if (PERIOD_DAY.equals(periodName))
 		{
 			startDate = Date.from(LocalDate.now()
 					.atStartOfDay()
 					.atZone(ZoneId.systemDefault())
 					.toInstant());
 		}
-		else if(PERIOD_WEEK.equals(periodName))
+		else if (PERIOD_WEEK.equals(periodName))
 		{
 			startDate = Date.from(LocalDate.now()
 					.atStartOfDay()
@@ -463,21 +480,23 @@ public class Telegrammer extends TelegramLongPollingBot
 			executeCommand(BotCommand.CreateCommand(NOTFULL), updateMessage);
 		}
 
-		List<Counter> counterStates = _countsManager.getCounterStatesForPeriod(counter, startDate, lastDate);
-		if(counterStates.size() < 2)
+		Counter finalCounter = counter;
+		Date finalStartDate = startDate;
+		List<Counter> counterStates = _countsManager.getCounterStatesForPeriod(finalCounter, finalStartDate, lastDate);
+		if (counterStates.size() < 2)
 		{
 			sendTextToChat("Not enough values to calculate delta", updateMessage.getChatId());
 			return;
 		}
 
 		float delta = counterStates.get(counterStates.size() - 1).getCounterValue() - counterStates.get(0).getCounterValue();
-		sendTextToChat("Counter " + counter.name() + " delta since beginning of " + periodName + " is: " + delta, updateMessage.getChatId());
+		sendTextToChat("Counter " + finalCounter.name() + " delta since beginning of " + periodName + " is: " + delta, updateMessage.getChatId());
 	}
 
 	private void executeCommandLanguages(Message updateMessage)
 	{
 		List<Locale> supportedLanguages = _transl.supportedLanguages();
-		if(supportedLanguages == null)
+		if (supportedLanguages == null)
 		{
 			sendTextToChat("Error retrieving supported languages list", updateMessage.getChatId());
 		}
@@ -499,10 +518,10 @@ public class Telegrammer extends TelegramLongPollingBot
 	private void executeCommandCounters(Message updateMessage)
 	{
 		List<String> permittedChats = _confManager.getValuesArray("counters.show", "permissions");
-		if(updateMessage.getFrom() != null)
+		if (updateMessage.getFrom() != null)
 		{
 			Integer userId = updateMessage.getFrom().getId();
-			if(!permittedChats.contains(Integer.toString(userId)))
+			if (!permittedChats.contains(Integer.toString(userId)))
 			{
 				sendTextToChat("You are not allowed to view counters", updateMessage.getChatId());
 				return;
@@ -530,8 +549,8 @@ public class Telegrammer extends TelegramLongPollingBot
 			for (String period : Arrays.asList(PERIOD_MONTH, PERIOD_WEEK, PERIOD_DAY))
 			{
 				buttons.add(new InlineKeyboardButton()
-					.setText("Δ " + period)
-					.setCallbackData(BotCommand.Commands.COUNTERDELTA + ":" + id + ":" + period));
+						.setText("Δ " + period)
+						.setCallbackData(BotCommand.Commands.COUNTERDELTA + ":" + id + ":" + period));
 			}
 			keyboardMarkup.setKeyboard(Arrays.asList(buttons));
 
@@ -556,10 +575,10 @@ public class Telegrammer extends TelegramLongPollingBot
 	private void executeCommandTranslate(BotCommand command, Message updateMessage)
 	{
 		List<String> permittedChats = _confManager.getValuesArray("translation", "permissions");
-		if(updateMessage.getFrom() != null)
+		if (updateMessage.getFrom() != null)
 		{
 			Integer userId = updateMessage.getFrom().getId();
-			if(!permittedChats.contains(Integer.toString(userId)))
+			if (!permittedChats.contains(Integer.toString(userId)))
 			{
 				sendTextToChat("You are not allowed to perform translation.", updateMessage.getChatId());
 				return;
@@ -572,7 +591,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		Translation translFrom = Translation.SourceTranslation(srcTranslation, destTranslation, sourceText);
 		Translation translTo = _transl.translate(translFrom);
 
-		if(translTo.getResultText() == null || translTo.getResultText().isEmpty())
+		if (translTo.getResultText() == null || translTo.getResultText().isEmpty())
 		{
 			_countsManager.changeCounterValue(COUNTER_TRANSL_ERRORS, 1);
 			sendTextToChat("Error translating text", updateMessage.getChatId());
@@ -592,7 +611,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		List<String> msgURLs = getMessageURLs(updateMessage);
 		StringBuilder linksText = new StringBuilder();
-		if(msgURLs.size() > 0)
+		if (msgURLs.size() > 0)
 		{
 			int number = 1;
 			ShortenUrlExpander expander = new ShortenUrlExpander();
@@ -646,16 +665,16 @@ public class Telegrammer extends TelegramLongPollingBot
 	{
 		ArrayList<String> urls = new ArrayList<>();
 
-		if(updateMessage.hasEntities())
+		if (updateMessage.hasEntities())
 		{
 			for (MessageEntity oneEntity : updateMessage.getEntities())
 			{
 				String entityType = oneEntity.getType();
-				if("url".equals(entityType))
+				if ("url".equals(entityType))
 				{
 					urls.add(oneEntity.getText());
 				}
-				else if("text_link".equals(entityType))
+				else if ("text_link".equals(entityType))
 				{
 					urls.add(oneEntity.getUrl());
 				}
@@ -670,7 +689,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		ArrayList<String> tokens = new ArrayList<>(Arrays.asList(commandText.split("\\s+")));
 		String firstWord = tokens.get(0).toLowerCase();
 
-		if(!firstWord.startsWith("/"))
+		if (!firstWord.startsWith("/"))
 		{
 			return BotCommand.NOPCommand();
 		}
@@ -722,7 +741,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		BotCommand command;
 		Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
 		Matcher matcher = rxCommand.matcher(commandText);
-		if(matcher.find())
+		if (matcher.find())
 		{
 			String fromLang = matcher.group(2);
 			String toLang = matcher.group(3);
@@ -738,7 +757,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		rxCommand = Pattern.compile("(/\\S+)\\s+(\\S{2})\\s+(.+)", Pattern.DOTALL + Pattern.MULTILINE);
 		matcher = rxCommand.matcher(commandText);
 
-		if(matcher.find())
+		if (matcher.find())
 		{
 			String toLang = matcher.group(2);
 			String text = matcher.group(3);
@@ -760,7 +779,7 @@ public class Telegrammer extends TelegramLongPollingBot
 		// /command$1 <counter name>$2 <period name (month|week|day)>$3
 		Pattern rxCommand = Pattern.compile("(/\\S+)\\s+(\\S+)\\s+(month|week|day)\\s*$", Pattern.CASE_INSENSITIVE);
 		Matcher matcher = rxCommand.matcher(commandText);
-		if(matcher.find())
+		if (matcher.find())
 		{
 			String counterName = matcher.group(2);
 			String periodName = matcher.group(3);
@@ -783,7 +802,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			String secretsGroup = SECRETS_GROUP;
 
 			// for tests will use separate bot
-			if(null == CLASS_VERSION || CLASS_VERSION.isEmpty())
+			if (null == CLASS_VERSION || CLASS_VERSION.isEmpty())
 			{
 				secretsGroup = SECRETS_GROUP_TEST;
 			}
@@ -806,7 +825,7 @@ public class Telegrammer extends TelegramLongPollingBot
 			String secretsGroup = SECRETS_GROUP;
 
 			// for tests will use separate bot
-			if(null == CLASS_VERSION || CLASS_VERSION.isEmpty())
+			if (null == CLASS_VERSION || CLASS_VERSION.isEmpty())
 			{
 				secretsGroup = SECRETS_GROUP_TEST;
 			}

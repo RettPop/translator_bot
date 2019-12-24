@@ -23,8 +23,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -113,13 +116,23 @@ public class AzureTranslator implements Translator
 	@Override
 	public String pageTranslationURL(String sourceURL, Translation message)
 	{
+		String encodedURL;
+		try
+		{
+			encodedURL = URLEncoder.encode(sourceURL, StandardCharsets.UTF_8.toString());
+		}
+		catch (UnsupportedEncodingException e)
+		{
+			encodedURL = sourceURL;
+		}
+
 		String formURL = new StringBuilder(SITETRANSLATOR_MICROSOFTTRANSLATOR)
 				.append("?")
 				.append("from=").append(message.getSourceLocale())
 				.append("&")
 				.append("to=").append(message.getDestinationLocale())
 				.append("&")
-				.append("a=").append(sourceURL)
+				.append("a=").append(encodedURL)
 				.toString();
 
 		return formURL;

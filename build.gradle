@@ -1,7 +1,7 @@
 group 'com.sapisoft.bots'
 
 ext {
-    appVersion = '1.0.21'
+    appVersion = '1.0.22'
 }
 
 version appVersion + '-SNAPSHOT'

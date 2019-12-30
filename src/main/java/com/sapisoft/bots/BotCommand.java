@@ -14,6 +14,7 @@ public class BotCommand
 		TRANSLATE("translate"),
 		TRANSLATE_TO("translate"),
 		TRANSLATE_FROM_TO("translate"),
+		TRANSLATE_BY_FRANK("translate_by_frank"),
 		LANGUAGES("languages"),
 		COUNTERS("counters"),
 		COUNTERDELTA("counterdelta"),
@@ -53,6 +54,10 @@ public class BotCommand
 					break;
 				case "translate_from_to":
 					command = TRANSLATE_FROM_TO;
+					break;
+				case "tf": //alias
+				case "translate_by_frank":
+					command = TRANSLATE_BY_FRANK;
 					break;
 				case "c":
 				case "counters":

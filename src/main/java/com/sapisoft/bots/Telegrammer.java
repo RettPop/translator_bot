@@ -12,6 +12,7 @@ import com.sapisoft.stats.FileCountersManager;
 import com.sapisoft.translator.Translation;
 import com.sapisoft.translator.Translator;
 import com.sapisoft.utils.ShortenUrlExpander;
+import com.sapisoft.utils.TextProcessor;
 import org.fest.util.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +70,7 @@ public class Telegrammer extends TelegramLongPollingBot
 	private Map<Long, List<TranslationCommand>> _routing;
 
 	private final FileCountersManager _countsManager;
+	private final Counter COUNTER_SPLITS = Counter.fromString("splits.Number");
 	private final Counter COUNTER_TRANSLATES = Counter.fromString("translations.Number");
 	private final Counter COUNTER_TOTAL_CHARS = Counter.fromString("translations.Characters");
 	private final Counter COUNTER_MSG_LENGTH = Counter.fromString("translations.MessageLength");
@@ -406,6 +408,11 @@ public class Telegrammer extends TelegramLongPollingBot
 				executeCommandTranslate(command, updateMessage);
 				break;
 			}
+			case TRANSLATE_BY_FRANK:
+			{
+				executeCommandTranslateByFrank(command, updateMessage);
+				break;
+			}
 			case LANGUAGES:
 				executeCommandLanguages(updateMessage);
 				break;
@@ -572,17 +579,68 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 	}
 
+	private void executeCommandTranslateByFrank(BotCommand command, Message updateMessage)
+	{
+		if (!verifyPermission(updateMessage))
+		{
+			return;
+		}
+
+		Locale srcTranslation = command.parameters().get("from") == null ? Locale.forLanguageTag("") : Locale.forLanguageTag(command.parameters().get("from"));
+		Locale destTranslation = Locale.forLanguageTag(command.parameters().get("to"));
+		String sourceText = command.parameters().get("text");
+
+		// splitting input text to sentences and paragraps
+		List<String> paragraphs = TextProcessor.splitByParagraphs(sourceText);
+		StringBuilder translatedText = new StringBuilder();
+		Iterator<String> iter = paragraphs.iterator();
+		Translation translFrom = Translation.SimpleTranslation(sourceText);
+		while (iter.hasNext())
+		{
+			String onePara = iter.next();
+			List<String> paraSentences = TextProcessor.splitBySentences(onePara);
+			for(String oneSentence : paraSentences)
+			{
+				translFrom = Translation.SourceTranslation(srcTranslation, destTranslation, oneSentence);
+				Translation translTo = _transl.translate(translFrom);
+
+				if(!oneSentence.isEmpty())
+				{
+					if (translTo.getResultText() == null || translTo.getResultText().isEmpty())
+					{
+						_countsManager.changeCounterValue(COUNTER_TRANSL_ERRORS, 1);
+						sendTextToChat("Error translating text", updateMessage.getChatId());
+						return;
+					}
+					translatedText.append(oneSentence + " [" + translTo.getResultText() + "] ");
+				}
+			}
+			if(iter.hasNext())
+			{
+				translatedText.append("\n");
+			}
+		}
+
+		Translation finalTranslTo = Translation.getBuilder()
+				.from(translFrom)
+				.resultText(translatedText.toString())
+				.build();
+
+		String linksText = getTranslatedLinksText(updateMessage, new GoogleTranslator(), finalTranslTo);
+
+		sendTextToChat(finalTranslTo.getResultText() + linksText, updateMessage.getChatId());
+		_countsManager.changeCounterValue(Counter.fromString("translations.FromChat." + updateMessage.getChatId()), 1);
+		_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, sourceText.length());
+		_countsManager.setCounterValue(COUNTER_MSG_LENGTH, sourceText.length());
+		_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
+		_countsManager.changeCounterValue(COUNTER_SPLITS, 1);
+	}
+
 	private void executeCommandTranslate(BotCommand command, Message updateMessage)
 	{
-		List<String> permittedChats = _confManager.getValuesArray("translation", "permissions");
-		if (updateMessage.getFrom() != null)
+		if (!verifyPermission(updateMessage))
 		{
-			Integer userId = updateMessage.getFrom().getId();
-			if (!permittedChats.contains(Integer.toString(userId)))
-			{
-				sendTextToChat("You are not allowed to perform translation.", updateMessage.getChatId());
-				return;
-			}
+			return;
 		}
 
 		Locale srcTranslation = command.parameters().get("from") == null ? Locale.forLanguageTag("") : Locale.forLanguageTag(command.parameters().get("from"));
@@ -605,6 +663,22 @@ public class Telegrammer extends TelegramLongPollingBot
 		_countsManager.changeCounterValue(COUNTER_TOTAL_CHARS, translFrom.getSourceText().length());
 		_countsManager.setCounterValue(COUNTER_MSG_LENGTH, translFrom.getSourceText().length());
 		_countsManager.changeCounterValue(COUNTER_TRANSLATES, 1);
+	}
+
+	private boolean verifyPermission(Message updateMessage)
+	{
+		List<String> permittedChats = _confManager.getValuesArray("translation", "permissions");
+		if (updateMessage.getFrom() != null)
+		{
+			Integer userId = updateMessage.getFrom().getId();
+			if (!permittedChats.contains(Integer.toString(userId)))
+			{
+				sendTextToChat("You are not allowed to perform translation.", updateMessage.getChatId());
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private String getTranslatedLinksText(Message updateMessage, Translator translator, Translation translTo)
@@ -729,6 +803,11 @@ public class Telegrammer extends TelegramLongPollingBot
 				command = parseCommandTranslate(commandText);
 				break;
 			}
+			case TRANSLATE_BY_FRANK:
+			{
+				command = parseCommandTranslateByFrank(commandText);
+				break;
+			}
 			default:
 				break;
 		}
@@ -770,6 +849,17 @@ public class Telegrammer extends TelegramLongPollingBot
 		}
 
 		command = BotCommand.CreateCommand(NOTFULL);
+		return command;
+	}
+
+	private BotCommand parseCommandTranslateByFrank(String commandText)
+	{
+		BotCommand command = parseCommandTranslate(commandText);
+		if(command.command() == TRANSLATE || command.command() == TRANSLATE_TO || command.command() == TRANSLATE_FROM_TO)
+		{
+			command = BotCommand.CreateCommand(TRANSLATE_BY_FRANK, command.parameters());
+		}
+
 		return command;
 	}
 
